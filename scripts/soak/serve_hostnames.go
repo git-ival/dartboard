@@ -20,7 +20,7 @@ repeatedly sends queries to a service running on these pods via
 a service
 */
 
-package soak
+package main
 
 import (
 	"context"
@@ -321,17 +321,15 @@ func main() {
 		klog.Warningf("Failed to build restclient: %v", err)
 		klog.Warningf("Used Config: %v", config)
 		return
-	} else {
-		klog.Infof("restclient built successfully")
 	}
+	klog.Infof("restclient built successfully")
 
 	proxyRequest, errProxy := service.GetServicesProxyRequest(client, rclient.Get())
 	if errProxy != nil {
 		klog.Warningf("Get services proxy request failed: %v", errProxy)
 		return
-	} else {
-		klog.V(4).Infof("Get services proxy request succeeded")
 	}
+	klog.V(4).Infof("Get services proxy request succeeded")
 
 	fullRequest := proxyRequest.
 		Namespace(ns).
@@ -342,16 +340,18 @@ func main() {
 	serviceWaitInterval := 10 * time.Second
 	serviceWaitTimeout := 5 * time.Minute
 	endpoints := len(nodes.Items) * *podsPerNode
-	e2e.WaitForServiceEndpointsNum(context.TODO(), client, ns, "serve-hostnames", endpoints, serviceWaitInterval, serviceWaitTimeout)
+	err = e2e.WaitForServiceEndpointsNum(context.TODO(), client, ns, "serve-hostnames", endpoints, serviceWaitInterval, serviceWaitTimeout)
+	if err != nil {
+		klog.Fatalf("Failed to wait for Service Endpoints (%v): %v", endpoints, err)
+	}
 	for start := time.Now(); time.Since(start) < endpointTimeout; time.Sleep(10 * time.Second) {
 		hostname, err := fullRequest.DoRaw(context.TODO())
 		klog.V(4).Infof("Response: %v", string(hostname))
 		if err != nil {
 			klog.Infof("After %v while making a proxy call got error %v", time.Since(start), err)
 			continue
-		} else {
-			klog.Infof("After %v successfully made proxy call to %v", time.Since(start), hostname)
 		}
+		klog.Infof("After %v successfully made proxy call to %v", time.Since(start), hostname)
 		var r metav1.Status
 		if err := runtime.DecodeInto(legacyscheme.Codecs.UniversalDecoder(), hostname, &r); err != nil {
 			break
@@ -359,9 +359,8 @@ func main() {
 		if r.Status == metav1.StatusFailure {
 			klog.Infof("After %v got status %v", time.Since(start), string(r.Status))
 			continue
-		} else {
-			klog.Infof("After %v got status %v", time.Since(start), string(r.Status))
 		}
+		klog.Infof("After %v got status %v", time.Since(start), string(r.Status))
 		break
 	}
 
