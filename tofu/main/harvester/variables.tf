@@ -69,25 +69,18 @@ variable "project_name" {
 
 variable "first_kubernetes_api_port" {
   description = "Port number where the Kubernetes API of the first cluster is published locally. Other clusters' ports are published in successive ports"
-<<<<<<< HEAD
   type        = number
-=======
->>>>>>> 4a0113a (WIP)
   default     = 7445
 }
 
 variable "first_app_http_port" {
   description = "Port number where the first server's port 80 is published locally. Other clusters' ports are published in successive ports"
-<<<<<<< HEAD
   type        = number
-=======
->>>>>>> 4a0113a (WIP)
   default     = 9080
 }
 
 variable "first_app_https_port" {
   description = "Port number where the first server's port 443 is published locally. Other clusters' ports are published in successive ports"
-<<<<<<< HEAD
   type        = number
   default     = 9443
 }
@@ -141,31 +134,6 @@ variable "password" {
 
 variable "ssh_shared_public_keys" {
   description = "A list of shared public ssh key names + namespaces (which already exists in Harvester) to load onto the Harvester VMs"
-=======
-  default     = 9443
-}
-
-variable "networks" {
-  description = <<-EOT
-  List of objects combining fields that define pre-existing VM Networks as well as the VM's network_interface type and model.
-  Each object includes a name, a "public" flag if the network will assign a public IP address, a "wait_for_lease" flag if the interface is expected to provision an IP address,
-  and optionally a namespace, interface_type and interface_model to be assigned to the VM.
-  If using a VM Network which will assign a public IP to the VM, ensure the "public" flag is set to true.
-  EOT
-  type = list(object({
-    name            = string
-    namespace       = optional(string)
-    interface_type  = optional(string)
-    interface_model = optional(string)
-    public          = bool
-    wait_for_lease  = bool
-  }))
-  default = []
-}
-
-variable "ssh_keys" {
-  description = "List of SSH key names and namespaces to be pulled from Harvester"
->>>>>>> 4a0113a (WIP)
   type = list(object({
     name      = string
     namespace = string
@@ -173,88 +141,7 @@ variable "ssh_keys" {
   default = []
 }
 
-<<<<<<< HEAD
 variable "create_image" {
   description = "Whether to create a new image for the VMs"
   default     = true
-=======
-variable "ssh_user" {
-  description = "User name to use for the SSH connection"
-  type        = string
-  default     = "root"
-}
-
-# variable "ssh_public_key_path" {
-#   description = "Path to SSH public key file (can be generated with `ssh-keygen -t ed25519`)"
-#   default     = "~/.ssh/id_ed25519.pub"
-# }
-
-variable "ssh_private_key_path" {
-  description = "Path of private ssh key used to access the instance"
-  type        = string
-}
-
-variable "bastion_host_image_name" {
-  description = "Unique name of a harvester image which will be used if it exists"
-  default     = "opensuse-leap-15.5-minimal"
-  // https://download.opensuse.org/distribution/leap/15.5/appliances/openSUSE-Leap-15.5-Minimal-VM.x86_64-Cloud.qcow2
-}
-
-# variable "bastion_host_image_namespace" {
-#   description = "Namespace to search for OR upload image, if it does not exist"
-#   default = "default"
-# }
-
-variable "ssh_bastion_user" {
-  description = "User name for the SSH bastion host's OS"
-  default     = "root"
-}
-
-variable "ssh_tunnels" {
-  description = "Opens SSH tunnels to this host via the bastion"
-  type        = list(list(number))
-  default     = []
-}
-
-variable "disks" {
-  description = "List of objects representing the disks to be provisioned for the VM. NOTE: boot_order will be set to the index of each disk in the list."
-  type = list(object({
-    name = string
-    type = string
-    size = number
-    bus  = string
-  }))
-  default = []
-}
-
-variable "efi" {
-  description = "Flag that determines if the VM will boot in EFI mode"
-  type        = bool
-  default     = false
-}
-
-variable "secure_boot" {
-  description = "Flag that determines if the VM will be provisioned with secure_boot enabled. EFI must be enabled to use this"
-  type        = bool
-  default     = false
-}
-
-variable "cloudinit_secrets" {
-  description = <<-EOT
-  A map which includes the name, namespace and optionally, the userdata content of a cloudinit configuration to be passed to the VM.
-  If user_data is provided, a new cloudinit configuration will be created.
-  If user_data is NOT provided, we use a datasource to pull the cloudinit_secret from Harvester.
-  EOT
-  type = list(object({
-    name      = string
-    namespace = string
-    user_data = optional(string, "") //Path to a file to be used for the cloudinit_secret' user_data
-  }))
-  default = []
-}
-
-variable "host_configuration_commands" {
-  description = "Commands to run when the host is deployed"
-  default     = ["cat /etc/os-release"]
->>>>>>> 4a0113a (WIP)
 }
