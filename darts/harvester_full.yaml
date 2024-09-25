@@ -8,17 +8,17 @@ tofu_main_directory: ./tofu/main/harvester
 
 tofu_variables:
   project_name: st
-  #ssh_private_key_path: # set to passphrase-less ssh key
-  #ssh_bastion_key_path: # set to passphrase-less ssh key
+  # Uses the file pointed by KUBECONFIG by default, see
+  # https://docs.harvesterhci.io/v1.3/faq/#how-can-i-access-the-kubeconfig-file-of-the-harvester-cluster
+  # kubeconfig: nil
+  kubeconfig: ~/.kube/config_harvester
+  ssh_public_key_path: ~/.ssh/id_ed25519.pub
+  ssh_private_key_path: ~/.ssh/id_ed25519
   user: opensuse
   # password:  # set to an appropriate value
   ssh_bastion_user: root
   ssh_bastion_host: hpa4s11.prairie.suse.net # Must set this appropriately
   namespace: bullseye
-
-  ssh_keys: # keys must exist within the Harvester env already
-    - name: jenkins-elliptic-validation
-      namespace: bullseye
 
   networks:
     - interface_model: virtio
@@ -36,14 +36,14 @@ tofu_variables:
 
   upstream_cluster:
     name_prefix: upstream
-    server_count: 1
+    server_count: 3
     agent_count: 0
     distro_version: "v1.26.9+rke2r1"
     reserve_node_for_monitoring: false
 
     # harvester-specific
     cpu: 2
-    memory: 4
+    memory: 8
     tags: { "Owner": "st" }
     image_name: opensuse-leap-15.5-minimal-harvester # https://download.opensuse.org/repositories/home:/IValentin:/branches:/openSUSE:/Templates:/Images:/15.5/images/openSUSE-Leap-15.5-Minimal-VM.x86_64-15.5.0-Cloud-Build3.2.qcow2
     image_namespace: bullseye
@@ -82,7 +82,7 @@ tofu_variables:
 #  first_app_https_port: 9443
 
 chart_variables:
-  rancher_replicas: 1
+  rancher_replicas: 3
   downstream_rancher_monitoring: true
   admin_password: adminadminadmin
   rancher_monitoring_version: 104.1.0+up57.0.3 # see https://github.com/rancher/charts/tree/release-v2.9/assets/rancher-monitoring-crd
