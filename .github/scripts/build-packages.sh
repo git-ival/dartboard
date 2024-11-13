@@ -1,4 +1,13 @@
 #!/bin/bash
 set -e
 
-make
+oldPWD="$(pwd)"
+
+dirs=("./scripts/soak" "./test" "./cmd/dartboard")
+
+for dir in "${dirs[@]}"; do
+    echo "Building $dir"
+    cd "$dir"
+    go build ./...
+    cd "$oldPWD"
+done

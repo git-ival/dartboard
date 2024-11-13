@@ -17,43 +17,87 @@ limitations under the License.
 package helm
 
 import (
-	"encoding/json"
-	"fmt"
+	"errors"
+	"log"
 	"os"
-	"strings"
+	"time"
 
-	"github.com/rancher/dartboard/internal/vendored"
+	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/chart/loader"
+	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/release"
+	"helm.sh/helm/v3/pkg/storage/driver"
 )
 
-func Install(kubecfg, chartLocation, releaseName, namespace string, vals map[string]any) error {
-	args := []string{
-		"--kubeconfig=" + kubecfg,
-		"upgrade",
-		"--install",
-		"--namespace=" + namespace,
-		releaseName,
-		chartLocation,
-		"--create-namespace",
+// Timeout for chart installation. Helm default is 1 minute, but there were timeouts with Rancher Monitoring on AKS
+const timeout = 5 * time.Minute
+
+func Install(kubecfg, chartLocation, releaseName, namespace string, vals map[string]interface{}) error {
+	settings := cli.New()
+	settings.KubeConfig = kubecfg
+	settings.Debug = true
+	settings.SetNamespace(namespace)
+
+	var chartPath string
+	var c *chart.Chart
+	var err error
+
+	actionConfig := new(action.Configuration)
+
+	// TODO: use logger to provide debug logs
+	var logger = func(format string, v ...interface{}) {}
+	if err := actionConfig.Init(settings.RESTClientGetter(), namespace, os.Getenv("HELM_DRIVER"), logger); err != nil {
+		return err
 	}
-	if vals != nil {
-		valueString := ""
-		for k, v := range vals {
-			jsonVal, err := json.Marshal(v)
-			if err != nil {
+
+	// Check if the chart is already installed...
+	hCli := action.NewHistory(actionConfig)
+	hCli.Max = 1
+	// ...if not, install it...
+	if _, err = hCli.Run(releaseName); errors.Is(err, driver.ErrReleaseNotFound) {
+		if errors.Is(err, driver.ErrReleaseNotFound) {
+			installAction := action.NewInstall(actionConfig)
+			installAction.CreateNamespace = true
+			installAction.ReleaseName = releaseName
+			installAction.Namespace = namespace
+			installAction.Timeout = timeout
+			if chartPath, err = installAction.LocateChart(chartLocation, settings); err != nil {
 				return err
 			}
-			valueString += k + "=" + string(jsonVal) + ","
+			if c, err = loader.Load(chartPath); err != nil {
+				return err
+			}
+			r, err := installAction.Run(c, vals)
+			return printNotes(r, err)
 		}
-		args = append(args, "--set-json="+valueString)
+		return err
 	}
 
-	cmd := vendored.Command("helm", args...)
-	var errStream strings.Builder
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = &errStream
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%v", errStream.String())
+	// ...otherwise do an upgrade.
+	upgradeAction := action.NewUpgrade(actionConfig)
+	upgradeAction.Install = true
+	upgradeAction.Namespace = namespace
+	upgradeAction.Timeout = timeout
+	if chartPath, err = upgradeAction.LocateChart(chartLocation, settings); err != nil {
+		return err
 	}
+	if c, err = loader.Load(chartPath); err != nil {
+		return err
+	}
+	r, err := upgradeAction.Run(releaseName, c, vals)
+	return printNotes(r, err)
+}
 
+// printNotes prints the release notes to the log unless there was an error
+func printNotes(r *release.Release, err error) error {
+	if err != nil {
+		return err
+	}
+	if r.Info.Notes != "" {
+		log.Println(r.Info.Notes)
+	} else {
+		log.Printf("No notes for release %s", r.Name)
+	}
 	return nil
 }

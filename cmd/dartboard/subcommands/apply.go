@@ -24,7 +24,7 @@ func Apply(cli *cli.Context) error {
 		return err
 	}
 
-	if err = tf.PrintVersion(cli.Context); err != nil {
+	if err = tofuVersionPrint(cli.Context, tf); err != nil {
 		return err
 	}
 	if err = tf.Apply(cli.Context); err != nil {
