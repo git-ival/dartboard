@@ -68,6 +68,14 @@ type Tofu struct {
 	variables []string
 }
 
+func (t *Tofu) buildArgs() []string {
+	var args []string
+	for _, variable := range t.variables {
+		args = append(args, "-var", variable)
+	}
+	return args
+}
+
 func New(ctx context.Context, variableMap map[string]interface{}, dir string, parallelism int, verbose bool) (*Tofu, error) {
 	var variables []string
 	for k, v := range variableMap {
@@ -114,17 +122,13 @@ func (t *Tofu) exec(output io.Writer, args ...string) error {
 
 func (t *Tofu) Apply(ctx context.Context) error {
 	args := []string{"apply", "-parallelism", strconv.Itoa(t.threads), "-auto-approve"}
-
-	for _, variable := range t.variables {
-		args = append(args, "-var", variable)
-	}
-
+	args = append(args, t.buildArgs()...)
 	return t.exec(nil, args...)
 }
 
 func (t *Tofu) Destroy(ctx context.Context) error {
 	args := []string{"destroy", "-parallelism", strconv.Itoa(t.threads), "-auto-approve"}
-
+	args = append(args, t.buildArgs()...)
 	return t.exec(nil, args...)
 }
 
