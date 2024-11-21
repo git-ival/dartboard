@@ -88,6 +88,19 @@ func main() {
 				Description: "runs `tofu destroy` and then deploys all the provisioned clusters",
 				Action:      subcommands.Redeploy,
 			},
+			{
+				Name:        "tui",
+				Usage:       "Starts a TUI experience for using dartboard",
+				Description: "runs a TUI powered by https://github.com/charmbracelet/bubbletea in order to ease usability of dartboard for new users",
+				Action:      subcommands.TUI,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  subcommands.ArgsDebug,
+						Value: false,
+						Usage: "enable debug logging support to a file, which can be tailed",
+					},
+				},
+			},
 		},
 	}
 
