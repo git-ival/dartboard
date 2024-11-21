@@ -32,6 +32,7 @@ import (
 const (
 	ArgDart      = "dart"
 	ArgSkipApply = "skip-apply"
+	ArgsDebug    = "debug"
 )
 
 type clusterAddress struct {
