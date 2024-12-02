@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 
 	"github.com/rancher/dartboard/cmd/dartboard/subcommands"
+	"github.com/rancher/dartboard/cmd/dartboard/subcommands/tui"
 	"github.com/urfave/cli/v2"
 )
 
@@ -92,7 +93,7 @@ func main() {
 				Name:        "tui",
 				Usage:       "Starts a TUI experience for using dartboard",
 				Description: "runs a TUI powered by https://github.com/charmbracelet/bubbletea in order to ease usability of dartboard for new users",
-				Action:      subcommands.TUI,
+				Action:      tui.Start,
 				Flags: []cli.Flag{
 					&cli.BoolFlag{
 						Name:  subcommands.ArgsDebug,
