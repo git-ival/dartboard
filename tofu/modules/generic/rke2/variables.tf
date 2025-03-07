@@ -114,4 +114,3 @@ variable "datastore_endpoint" {
   type        = string
   default     = null
 }
-

@@ -130,3 +130,10 @@ variable "network_config" {
     ssh_bastion_key_path = optional(string)
   })
 }
+
+variable "image_id" {
+  description = "ID of a Harvester image, if one was created. Otherwise null"
+  type        = string
+  default     = null
+  nullable    = true
+}
