@@ -36,6 +36,7 @@ module "upstream_cluster" {
   ssh_user                  = var.ssh_user
   node_module               = var.node_module
   network_config            = var.network_config
+  image_id                  = var.image_id
   node_module_variables     = var.upstream_cluster.node_module_variables
   datastore_endpoint        = var.upstream_cluster.postgres_node_variables != {} ? module.upstream_postgres[0].datastore_endpoint : null
 }
@@ -61,6 +62,7 @@ module "tester_cluster" {
   ssh_user                  = var.ssh_user
   node_module               = var.node_module
   network_config            = var.network_config
+  image_id                  = var.image_id
   node_module_variables     = var.tester_cluster.node_module_variables
 }
 
@@ -86,5 +88,6 @@ module "downstream_clusters" {
   ssh_user                  = var.ssh_user
   node_module               = var.node_module
   network_config            = var.network_config
+  image_id                  = var.image_id
   node_module_variables     = local.downstream_clusters[count.index].node_module_variables
 }
