@@ -81,7 +81,11 @@ func Deploy(cli *cli.Context) error {
 	rancherImageTag := "v" + rancherVersion
 	if r.ChartVariables.RancherImageTagOverride != "" {
 		rancherImageTag = r.ChartVariables.RancherImageTagOverride
-		err = importImageIntoK3d(tf, "rancher/rancher:"+rancherImageTag, upstream)
+		image := "rancher/rancher"
+		if r.ChartVariables.RancherImageOverride != "" {
+			image = r.ChartVariables.RancherImageOverride
+		}
+		err = importImageIntoK3d(tf, image+":"+rancherImageTag, upstream)
 		if err != nil {
 			return err
 		}
@@ -162,18 +166,23 @@ func chartInstallCertManager(r *dart.Dart, cluster *tofu.Cluster) error {
 
 func chartInstallRancher(r *dart.Dart, rancherImageTag string, cluster *tofu.Cluster) error {
 	var rancherRepo string
-	// "prime"
-	if r.ChartVariables.ForcePrimeRegistry {
-		rancherRepo = "https://charts.rancher.com/server-charts/prime"
-	}
 
-	baseRepo := "https://releases.rancher.com/server-charts/"
-
-	// otherwise, if one of "alpha", or "latest"
-	if strings.Contains(r.ChartVariables.RancherVersion, "alpha") {
-		rancherRepo = baseRepo + "alpha"
+	if r.ChartVariables.RancherChartRepoOverride != "" {
+		rancherRepo = r.ChartVariables.RancherChartRepoOverride
 	} else {
-		rancherRepo = baseRepo + "latest"
+		// "prime"
+		if r.ChartVariables.ForcePrimeRegistry {
+			rancherRepo = "https://charts.rancher.com/server-charts/prime"
+		}
+
+		baseRepo := "https://releases.rancher.com/server-charts/"
+
+		// otherwise, if one of "alpha", or "latest"
+		if strings.Contains(r.ChartVariables.RancherVersion, "alpha") {
+			rancherRepo = baseRepo + "alpha"
+		} else {
+			rancherRepo = baseRepo + "latest"
+		}
 	}
 
 	chartRancher := chart{
@@ -207,6 +216,12 @@ func chartInstallRancher(r *dart.Dart, rancherImageTag string, cluster *tofu.Clu
 	extraEnv = append(extraEnv, r.ChartVariables.ExtraEnvironmentVariables...)
 
 	chartVals := getRancherValsJSON(r.ChartVariables.RancherImageOverride, rancherImageTag, r.ChartVariables.AdminPassword, rancherClusterName, extraEnv, r.ChartVariables.RancherReplicas)
+
+	fmt.Printf("\n\nRANCHER CHART VALS:\n")
+
+	for key, value := range chartVals {
+		fmt.Printf("\t%s = %v\n", key, value)
+	}
 
 	return chartInstall(cluster.Kubeconfig, chartRancher, chartVals)
 }
@@ -318,7 +333,7 @@ func getRancherMonitoringValsJSON(reserveNodeForMonitoring bool, mimirURL string
 				"evaluationInterval": "1m",
 				"nodeSelector":       nodeSelector,
 				"tolerations":        tolerations,
-				"resources":          map[string]any{"limits": map[string]any{"memory": "5000Mi"}},
+				"resources":          map[string]any{"limits": map[string]any{"memory": "10000Mi"}},
 				"retentionSize":      "50GiB",
 				"scrapeInterval":     "1m",
 
