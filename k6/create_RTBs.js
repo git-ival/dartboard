@@ -154,15 +154,6 @@ function cleanup(cookies) {
   }
 }
 
-// TODO: On each iteration create 1 Project, select 1 cluster and:
-/*
-  Create Project Role
-  Create CRTB
-  Add each user to Project with PRTB
-  Add each user to Cluster with CRTB
-  Verify user has *ONLY* the expected permissions
-*/
-
 function createUserExpectFail(baseUrl, cookies, name, password = "useruseruser") {
   const res = http.post(`${baseUrl}/v3/users`,
     JSON.stringify({
