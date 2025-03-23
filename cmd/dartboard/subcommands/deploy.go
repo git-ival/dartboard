@@ -161,18 +161,19 @@ func chartInstallCertManager(r *dart.Dart, cluster *tofu.Cluster) error {
 }
 
 func chartInstallRancher(r *dart.Dart, rancherImageTag string, cluster *tofu.Cluster) error {
-	rancherRepo := "https://releases.rancher.com/server-charts/"
-
-	// one of "alpha", "latest" or "stable"
-	if strings.Contains(r.ChartVariables.RancherVersion, "alpha") {
-		rancherRepo += "alpha"
-	} else {
-		rancherRepo += "latest"
-	}
-
-	// or "prime"
+	var rancherRepo string
+	// "prime"
 	if r.ChartVariables.ForcePrimeRegistry {
 		rancherRepo = "https://charts.rancher.com/server-charts/prime"
+	}
+
+	baseRepo := "https://releases.rancher.com/server-charts/"
+
+	// otherwise, if one of "alpha", or "latest"
+	if strings.Contains(r.ChartVariables.RancherVersion, "alpha") {
+		rancherRepo = baseRepo + "alpha"
+	} else {
+		rancherRepo = baseRepo + "latest"
 	}
 
 	chartRancher := chart{
@@ -188,7 +189,24 @@ func chartInstallRancher(r *dart.Dart, rancherImageTag string, cluster *tofu.Clu
 	rancherClusterName := clusterAdd.Public.Name
 	rancherClusterURL := clusterAdd.Public.HTTPSURL
 
-	chartVals := getRancherValsJSON(r.ChartVariables.RancherImageOverride, rancherImageTag, r.ChartVariables.AdminPassword, rancherClusterName, rancherClusterURL, r.ChartVariables.RancherReplicas)
+	var extraEnv []map[string]any
+	extraEnv = []map[string]any{
+		{
+			"name":  "CATTLE_SERVER_URL",
+			"value": rancherClusterURL,
+		},
+		{
+			"name":  "CATTLE_PROMETHEUS_METRICS",
+			"value": "true",
+		},
+		{
+			"name":  "CATTLE_DEV_MODE",
+			"value": "true",
+		},
+	}
+	extraEnv = append(extraEnv, r.ChartVariables.ExtraEnvironmentVariables...)
+
+	chartVals := getRancherValsJSON(r.ChartVariables.RancherImageOverride, rancherImageTag, r.ChartVariables.AdminPassword, rancherClusterName, extraEnv, r.ChartVariables.RancherReplicas)
 
 	return chartInstall(cluster.Kubeconfig, chartRancher, chartVals)
 }
@@ -401,26 +419,13 @@ func getGrafanaValsJSON(r *dart.Dart, name, url, ingressClass string) map[string
 	}
 }
 
-func getRancherValsJSON(rancherImageOverride, rancherImageTag, bootPwd, hostname, serverURL string, replicas int) map[string]any {
+func getRancherValsJSON(rancherImageOverride, rancherImageTag, bootPwd, hostname string, extraEnv []map[string]any, replicas int) map[string]any {
 	result := map[string]any{
 		"bootstrapPassword": bootPwd,
 		"hostname":          hostname,
 		"replicas":          replicas,
 		"rancherImageTag":   rancherImageTag,
-		"extraEnv": []map[string]any{
-			{
-				"name":  "CATTLE_SERVER_URL",
-				"value": serverURL,
-			},
-			{
-				"name":  "CATTLE_PROMETHEUS_METRICS",
-				"value": "true",
-			},
-			{
-				"name":  "CATTLE_DEV_MODE",
-				"value": "true",
-			},
-		},
+		"extraEnv":          extraEnv,
 		"livenessProbe": map[string]any{
 			"initialDelaySeconds": 30,
 			"periodSeconds":       3600,
