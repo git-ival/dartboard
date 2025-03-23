@@ -69,16 +69,16 @@ export function setup() {
   let myId = getMyId(cookies)
 
   // Create Projects, and Users
-  for (let numProjects = 1; numProjects <= projectCount; numProjects++) {
-    let res = createProject(baseUrl, cookies, `Test Project ${numProjects}`, clusterIds[numProjects % clusterIds.length], myId)
+  for (let numProjects = 0; numProjects < projectCount; numProjects++) {
+    let res = createProject(baseUrl, cookies, `Test Project ${numProjects + 1}`, clusterIds[numProjects % clusterIds.length], myId)
     if (res.status !== 201) {
       console.log("create project status: ", res.status)
       fail("Failed to create all expected Projects")
     }
   }
 
-  for (let numUsers = 1; numUsers <= userCount; numUsers++) {
-    let res = createUser(baseUrl, cookies, `Test User ${numUsers}`, `${numUsers}`)
+  for (let numUsers = 0; numUsers < userCount; numUsers++) {
+    let res = createUser(baseUrl, cookies, `Test User ${numUsers + 1}`, `${numUsers + 1}`, "useruseruser")
     if (res.status !== 201) {
       console.log("create user status: ", res.status)
       fail("Failed to create all expected Users")
@@ -97,8 +97,6 @@ export function setup() {
 
   let projects = JSON.parse(projectsRes.body)["data"].filter(p => ("displayName" in p["spec"]) && p["spec"]["displayName"].startsWith("Test "))
   let users = JSON.parse(usersRes.body)["data"].filter(p => ("name" in p) && p["name"].startsWith("Test "))
-  console.log("\nProjects:\n", JSON.stringify(projects, null, 2), "\n")
-  console.log("\nUsers:\n", JSON.stringify(users, null, 2), "\n")
 
   // return data that remains constant throughout the test
   return {
@@ -151,9 +149,6 @@ function cleanup(cookies) {
   let projectsDeleted = deleteProjectsByPrefix(baseUrl, cookies, "Dartboard ")
   let usersDeleted = deleteUsersByPrefix(baseUrl, cookies, "Dartboard ")
   let roleTemplatesDeleted = deleteRoleTemplatesByPrefix(baseUrl, cookies, "Dartboard ")
-  console.log(projectsDeleted)
-  console.log(usersDeleted)
-  console.log(roleTemplatesDeleted)
   if (!projectsDeleted || !usersDeleted || !roleTemplatesDeleted) {
     fail("failed to delete all objects created by test")
   }
@@ -186,7 +181,7 @@ function createUserExpectFail(baseUrl, cookies, name, password = "useruseruser")
     '/v3/users returns status 401 or 403': (r) => r.status === 401 || r.status === 403,
   })
 
-  let userData = JSON.parse(res.body).data
+  let userData = JSON.parse(res.body)
 
   if (!checkOK || userData.length > 0) {
     fail("Status check failed or received unexpected User data")
@@ -237,7 +232,7 @@ function createProjectExpectFail(baseUrl, cookies, name, clusterId, userPrincipa
     '/v3/projects returns status 401 or 403': (r) => r.status === 401 || r.status === 403,
   })
 
-  let projectData = JSON.parse(res.body).data
+  let projectData = JSON.parse(res.body)
 
   if (!checkOK || projectData.length > 0) {
     fail("Status check failed or received unexpected Project data")
@@ -278,8 +273,6 @@ export function createPRTBs(data) {
 
   let res = createRoleTemplate(baseUrl, data.cookies, projectRoleTemplate)
 
-  console.log("\nPRTB: ", JSON.parse(res.body), "\n")
-
   if (res.status !== 201) {
     fail("Could not create Project Role Template")
   }
@@ -287,11 +280,7 @@ export function createPRTBs(data) {
   let roleTemplateId = JSON.parse(res.body).id
 
   let userIdx = i % data.users.length
-  let user = data.users[i].id
-  console.log("\nProject: ", data.projects[i], "\n")
-  console.log("Index: ", i, "\n")
-  console.log("\nUser: ", user, "\n")
-  console.log("Index: ", i, "\n")
+  let user = data.users[i]
 
   res = createPRTB(baseUrl, data.cookies, data.projects[i].id, roleTemplateId, user.id)
 
@@ -300,19 +289,23 @@ export function createPRTBs(data) {
     fail("Failed to create PRTB")
   }
 
-  logout(baseUrl, data.cookies);
-  sleep(1)
-
   // log in as user
   if (!login(baseUrl, {}, user.username, "useruseruser")) {
     fail(`could not login to cluster as ${user.username}`)
   }
+  sleep(2)
   const cookies = getCookies(baseUrl)
 
   getProjectById(baseUrl, cookies, data.projects[i].id.replace("/", ":"))
   listProjects(baseUrl, cookies)
-  createProjectExpectFail(baseUrl, cookies, `Test Create Project Should Fail ${i}`, data.clusterIds[i])
-  logout(baseUrl, cookies);
+  createProjectExpectFail(baseUrl, cookies, `Test Create Project Should Fail ${i}`, data.clusterIds[i], user.id)
+
+  sleep(1)
+  res = logout(baseUrl, cookies);
+  if (res.status !== 200) {
+    console.log("\nResponse post-verify prtb: ", JSON.stringify(res, null, 2), "\n")
+    fail("Failed to logout")
+  }
 }
 
 export function createCRTBs(data) {
@@ -347,8 +340,6 @@ export function createCRTBs(data) {
 
   let res = createRoleTemplate(baseUrl, data.cookies, clusterRoleTemplate)
 
-  console.log("\nCRTB: ", JSON.parse(res.body), "\n")
-
   if (res.status !== 201) {
     fail("Could not create Project Role Template")
   }
@@ -357,33 +348,30 @@ export function createCRTBs(data) {
 
   let userIdx = i % data.users.length
   let clusterIdx = i % data.clusterIds.length
-  let user = data.users[i].id
-  console.log("\nClusterID: ", data.clusterIds[clusterIdx], "\n")
-  console.log("Index: ", i, "\n")
-  console.log("\nUser: ", user, "\n")
-  console.log("Index: ", i, "\n")
+  let user = data.users[i]
 
-  res = createCRTB(baseUrl, data.cookies, data.clusterIds[clusterIdx], roleTemplateId, data.users[i].id)
+  res = createCRTB(baseUrl, data.cookies, data.clusterIds[clusterIdx], roleTemplateId, user.id)
 
   if (res.status !== 201) {
     console.log("\nResponse: ", JSON.stringify(res, null, 2), "\n")
     fail("Failed to create CRTB")
   }
 
-  logout(baseUrl, data.cookies);
-  sleep(1)
-
   // log in as user
   if (!login(baseUrl, {}, user.username, "useruseruser")) {
     fail(`could not login to cluster as ${user.username}`)
   }
+  sleep(2)
   const cookies = getCookies(baseUrl)
 
-  // getUserById(baseUrl, data.cookies, data.users[userIdx].id)
   getProjectById(baseUrl, cookies, data.projects[i].id.replace("/", ":"))
-  // listUsers(baseUrl, cookies)
   listProjects(baseUrl, cookies)
-  // createUserExpectFail(baseUrl, cookies, `Test Create User Should Fail ${i}`)
-  createProjectExpectFail(baseUrl, cookies, `Test Create Project Should Fail ${i}`, data.clusterIds[i])
-  logout(baseUrl, cookies);
+  createProjectExpectFail(baseUrl, cookies, `Test Create Project Should Fail ${i}`, data.clusterIds[i], user.id)
+
+  sleep(1)
+  res = logout(baseUrl, cookies);
+  if (res.status !== 200) {
+    console.log("\nResponse post-verify crtb: ", JSON.stringify(res, null, 2), "\n")
+    fail("Failed to logout")
+  }
 }
