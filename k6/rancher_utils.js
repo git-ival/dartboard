@@ -687,8 +687,6 @@ export function createPRTB(baseUrl, cookies, projectId, roleTemplateId, userId) 
     }
   );
 
-  console.log("\nCreate PRTB Status: ", res.status, "\n")
-
   check(res, {
     '/v3/projectroletemplatebindings returns status 201 or 404': (r) => r.status === 201 || r.status === 404,
   })
@@ -713,8 +711,6 @@ export function createCRTB(baseUrl, cookies, clusterId, roleTemplateId, userId) 
     }
   );
 
-  console.log("\nCreate cRTB Status: ", res.status, "\n")
-
   check(res, {
     'POST v3/clusterroletemplatebindings returns status 201': (r) => r.status === 201,
   });
@@ -735,6 +731,8 @@ export function logout(baseUrl, cookies) {
   check(response, {
     'logging out works': (r) => r.status === 200,
   })
+
+  return response
 }
 
 export function deleteProjectsByPrefix(baseUrl, cookies, prefix) {
