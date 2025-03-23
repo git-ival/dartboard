@@ -129,7 +129,7 @@ export function getUserById(baseUrl, cookies, userId) {
 }
 
 export function listUsers(baseUrl, cookies) {
-  let res = http.get(`${baseUrl}/v1/management.cattle.io.users`, { cookies: cookies })
+  let res = http.get(`${baseUrl}/v3/users`, { cookies: cookies })
 
   let checkOK = check(res, {
     '/v1/management.cattle.io.users returns status 200': (r) => r.status === 200 || r.status === 204,
