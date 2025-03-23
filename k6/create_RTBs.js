@@ -96,7 +96,9 @@ export function setup() {
   }
 
   let projects = JSON.parse(projectsRes.body)["data"].filter(p => ("displayName" in p["spec"]) && p["spec"]["displayName"].startsWith("Test "))
-  let users = JSON.parse(usersRes.body)["data"].filter(p => ("displayName" in p) && p["displayName"].startsWith("Test "))
+  let users = JSON.parse(usersRes.body)["data"].filter(p => ("name" in p) && p["name"].startsWith("Test "))
+  console.log("\nProjects:\n", JSON.stringify(projects, null, 2), "\n")
+  console.log("\nUsers:\n", JSON.stringify(users, null, 2), "\n")
 
   // return data that remains constant throughout the test
   return {
@@ -285,7 +287,7 @@ export function createPRTBs(data) {
   let roleTemplateId = JSON.parse(res.body).id
 
   let userIdx = i % data.users.length
-  let user = getUserById(baseUrl, data.cookies, data.users[i].id)
+  let user = data.users[i].id
   console.log("\nProject: ", data.projects[i], "\n")
   console.log("Index: ", i, "\n")
   console.log("\nUser: ", user, "\n")
@@ -303,7 +305,7 @@ export function createPRTBs(data) {
 
   // log in as user
   if (!login(baseUrl, {}, user.username, "useruseruser")) {
-    fail(`could not login to cluster as ${username}`)
+    fail(`could not login to cluster as ${user.username}`)
   }
   const cookies = getCookies(baseUrl)
 
@@ -355,7 +357,7 @@ export function createCRTBs(data) {
 
   let userIdx = i % data.users.length
   let clusterIdx = i % data.clusterIds.length
-  let user = getUserById(baseUrl, data.cookies, data.users[i].id)
+  let user = data.users[i].id
   console.log("\nClusterID: ", data.clusterIds[clusterIdx], "\n")
   console.log("Index: ", i, "\n")
   console.log("\nUser: ", user, "\n")
@@ -373,7 +375,7 @@ export function createCRTBs(data) {
 
   // log in as user
   if (!login(baseUrl, {}, user.username, "useruseruser")) {
-    fail(`could not login to cluster as ${username}`)
+    fail(`could not login to cluster as ${user.username}`)
   }
   const cookies = getCookies(baseUrl)
 
