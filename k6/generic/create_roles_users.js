@@ -1,13 +1,19 @@
 import { check, sleep } from 'k6'
 import exec from 'k6/execution';
 import http from 'k6/http';
+<<<<<<< HEAD:k6/generic/create_roles_users.js
 import {Gauge} from 'k6/metrics';
 import {retryOnConflict} from "../rancher/rancher_utils.js";
+=======
+import { Gauge } from 'k6/metrics';
+import { retryOnConflict, isVersionLT } from "./rancher_utils.js";
+>>>>>>> 221c664 (format create projects and roles_users scripts, add version checks):k6/create_roles_users.js
 
 // Parameters
 const roleCount = Number(__ENV.ROLE_COUNT)
 const userCount = Number(__ENV.USER_COUNT)
-const vus = Math.min(1, userCount, roleCount)
+const vus = Math.min(5, userCount, roleCount)
+const enableLegacyRoles = isVersionLT(__ENV.RANCHER_VERSION, "2.10.0") || false
 const resourcesPerRole = 5
 const bindingsPerUser = 5
 
@@ -18,29 +24,29 @@ const password = __ENV.PASSWORD
 
 // Option setting
 export const options = {
-    insecureSkipTLSVerify: true,
+  insecureSkipTLSVerify: true,
 
-    setupTimeout: '8h',
+  setupTimeout: '8h',
 
-    scenarios: {
-        createRoles: {
-            executor: 'shared-iterations',
-            exec: 'createRoles',
-            vus: vus,
-            iterations: roleCount,
-            maxDuration: '1h',
-        },
-        createUsers: {
-            executor: 'shared-iterations',
-            exec: 'createUsers',
-            vus: vus,
-            iterations: userCount,
-            maxDuration: '1h',
-        },
+  scenarios: {
+    createRoles: {
+      executor: 'shared-iterations',
+      exec: 'createRoles',
+      vus: vus,
+      iterations: roleCount,
+      maxDuration: '1h',
     },
-    thresholds: {
-        checks: ['rate>0.99']
-    }
+    createUsers: {
+      executor: 'shared-iterations',
+      exec: 'createUsers',
+      vus: vus,
+      iterations: userCount,
+      maxDuration: '1h',
+    },
+  },
+  thresholds: {
+    checks: ['rate>0.99']
+  }
 }
 
 // Custom metrics
@@ -49,124 +55,157 @@ const resourceMetric = new Gauge('test_resources')
 // Test functions, in order of execution
 
 export function setup() {
-    // log in
-    const res = http.post(`${baseUrl}/v3-public/localProviders/local?action=login`, JSON.stringify({
-        "description": "UI session",
-        "responseType": "cookie",
-        "username": username,
-        "password": password
-    }))
+  // log in
+  const res = http.post(`${baseUrl}/v3-public/localProviders/local?action=login`, JSON.stringify({
+    "description": "UI session",
+    "responseType": "cookie",
+    "username": username,
+    "password": password
+  }))
 
-    check(res, {
-        '/v3-public/localProviders/local?action=login returns status 200': (r) => r.status === 200,
-    })
+  check(res, {
+    '/v3-public/localProviders/local?action=login returns status 200': (r) => r.status === 200,
+  })
 
-    const cookies = http.cookieJar().cookiesForURL(res.url)
+  const cookies = http.cookieJar().cookiesForURL(res.url)
 
-    // delete leftovers, if any
-    cleanup(cookies)
+  // delete leftovers, if any
+  cleanup(cookies)
 
-    return cookies
+  return cookies
 }
 
 function cleanup(cookies) {
-    let res = http.get(`${baseUrl}/v1/management.cattle.io.globalroles`, {cookies: cookies})
+  let res = http.get(`${baseUrl}/v1/management.cattle.io.globalroles`, { cookies: cookies })
+  check(res, {
+    '/v1/management.cattle.io.globalroles returns status 200': (r) => r.status === 200 || r.status === 204,
+  })
+  JSON.parse(res.body)["data"].filter(r => ("description" in r) && r["description"].startsWith("Test ")).forEach(r => {
+    res = http.del(`${baseUrl}/v3/globalRoles/${r["id"]}`, { cookies: cookies })
     check(res, {
-        '/v1/management.cattle.io.globalroles returns status 200': (r) => r.status === 200 || r.status === 204,
+      'DELETE /v3/globalRoles returns status 200': (r) => r.status === 200 || r.status === 204,
     })
-    JSON.parse(res.body)["data"].filter(r => ("description" in r) && r["description"].startsWith("Test ")).forEach(r => {
-        res = http.del(`${baseUrl}/v3/globalRoles/${r["id"]}`, {cookies: cookies})
-        check(res, {
-            'DELETE /v3/globalRoles returns status 200': (r) => r.status === 200 || r.status === 204,
-        })
-    })
-    res = http.get(`${baseUrl}/v1/management.cattle.io.users`, {cookies: cookies})
+  })
+  res = http.get(`${baseUrl}/v1/management.cattle.io.users`, { cookies: cookies })
+  check(res, {
+    '/v1/management.cattle.io.users returns status 200': (r) => r.status === 200 || r.status === 204,
+  })
+  JSON.parse(res.body)["data"].filter(r => r["description"].startsWith("Test ")).forEach(r => {
+    res = http.del(`${baseUrl}/v3/users/${r["id"]}`, { cookies: cookies })
     check(res, {
-        '/v1/management.cattle.io.users returns status 200': (r) => r.status === 200 || r.status === 204,
+      'DELETE /v3/users returns status 200': (r) => r.status === 200 || r.status === 204,
     })
-    JSON.parse(res.body)["data"].filter(r => r["description"].startsWith("Test ")).forEach(r => {
-        res = http.del(`${baseUrl}/v3/users/${r["id"]}`, {cookies: cookies})
-        check(res, {
-            'DELETE /v3/users returns status 200': (r) => r.status === 200  || r.status === 204,
-        })
-    })
-    sleep(2)
+  })
+  sleep(2)
 }
 
 const groupResources = [
-    ["fleet.cattle.io", "gitrepos"],
-    ["fleet.cattle.io", "bundledeployments"],
-    ["apiregistration.k8s.io", "apiservices"],
-    ["rbac.authorization.k8s.io", "clusterroles"],
-    ["events.k8s.io","events"],
-    ["apps","replicasets"],
-    ["discovery.k8s.io","endpointslices"],
+  ["fleet.cattle.io", "gitrepos"],
+  ["fleet.cattle.io", "bundledeployments"],
+  ["apiregistration.k8s.io", "apiservices"],
+  ["rbac.authorization.k8s.io", "clusterroles"],
+  ["events.k8s.io", "events"],
+  ["apps", "replicasets"],
+  ["discovery.k8s.io", "endpointslices"],
 ]
 
-const verbs = ["create", "delete", "get", "list","patch", "update", "watch"]
+const verbs = ["create", "delete", "get", "list", "patch", "update", "watch"]
 
 export function createRoles(cookies) {
-    const i = exec.scenario.iterationInTest
+  const i = exec.scenario.iterationInTest
 
-    const rules = Array.from({length: resourcesPerRole}, (_, j) => ({
-        "apiGroups": [groupResources[(i*resourcesPerRole + j) % groupResources.length][0]],
-        "nonResourceURLs": [],
-        "resourceNames": [],
-        "resources": [groupResources[(i*resourcesPerRole + j) % groupResources.length][1]],
-        "verbs": [verbs[(i*resourcesPerRole + j) % verbs.length]]
-    }))
+  const rules = Array.from({ length: resourcesPerRole }, (_, j) => ({
+    "apiGroups": [groupResources[(i * resourcesPerRole + j) % groupResources.length][0]],
+    "nonResourceURLs": [],
+    "resourceNames": [],
+    "resources": [groupResources[(i * resourcesPerRole + j) % groupResources.length][1]],
+    "verbs": [verbs[(i * resourcesPerRole + j) % verbs.length]]
+  }))
 
-    const res = http.post(
-        `${baseUrl}/v3/globalroles`,
-        JSON.stringify({
-            "type": "globalRole",
-            "name": `Test Global Role ${i}`,
-            "description": `Test Global Role ${i}`,
-            "rules": rules,
-            "newUserDefault": false,
-        }),
-        { cookies: cookies }
-    )
+  const res = http.post(
+    `${baseUrl}/v3/globalroles`,
+    JSON.stringify({
+      "type": "globalRole",
+      "name": `Test Global Role ${i}`,
+      "description": `Test Global Role ${i}`,
+      "rules": rules,
+      "newUserDefault": false,
+    }),
+    { cookies: cookies }
+  )
 
-    check(res, {
-        'v3/globalroles returns status 201': (r) => r.status === 201,
-    })
+  check(res, {
+    'v3/globalroles returns status 201': (r) => r.status === 201,
+  })
 
-    resourceMetric.add(roleCount + userCount)
+  resourceMetric.add(roleCount + userCount)
 }
 
 const bindings = [
+<<<<<<< HEAD:k6/generic/create_roles_users.js
     "user", "admin", "user-base", "authn-manage", "kontainerdrivers-manage", "settings-manage",
     "clusters-create", "features-manage", "nodedrivers-manage", "roles-manage",
     "view-rancher-metrics"
+=======
+  "user", "user-base", "authn-manage", "kontainerdrivers-manage",
+  "clustertemplaterevisions-create", "features-manage", "clusters-create",
+  "settings-manage", "view-rancher-metrics", "nodedrivers-manage", "clustertemplates-create",
+  "users-manage"
+>>>>>>> 221c664 (format create projects and roles_users scripts, add version checks):k6/create_roles_users.js
 ]
 
+if (enableLegacyRoles) {
+  bindings.push("restricted-admin")
+  bindings.push("catalogs-use")
+  bindings.push("catalogs-manage")
+  bindings.push("podsecuritypolicytemplates-manage")
+}
+
 export function createUsers(cookies) {
-    const i = exec.scenario.iterationInTest
+  const i = exec.scenario.iterationInTest
 
-    const res = http.post(`${baseUrl}/v3/users`,
+  const res = http.post(`${baseUrl}/v3/users`,
+    JSON.stringify({
+      "type": "user",
+      "name": `Test User ${i}`,
+      "description": `Test User ${i}`,
+      "enabled": true,
+      "mustChangePassword": false,
+      "password": "useruseruser",
+      "username": `user-${i}`
+    }),
+    { cookies: cookies }
+  )
+
+  sleep(0.1)
+  if (res.status != 201) {
+    console.log(res)
+  }
+  check(res, {
+    '/v3/users returns status 201': (r) => r.status === 201,
+  })
+
+  const id = JSON.parse(res.body)["id"]
+
+  for (let j = 0; j < bindingsPerUser; j++) {
+    const res = retryOnConflict(() => {
+      return http.post(
+        `${baseUrl}/v3/globalrolebindings`,
         JSON.stringify({
-            "type": "user",
-            "name": `Test User ${i}`,
-            "description": `Test User ${i}`,
-            "enabled": true,
-            "mustChangePassword": false,
-            "password": "useruseruser",
-            "username": `user-${i}`
+          "type": "globalRoleBinding",
+          "globalRoleId": [bindings[(i * bindingsPerUser + j) % bindings.length]],
+          "userId": id
         }),
-        {cookies: cookies}
-    )
-
-    sleep(0.1)
-    if (res.status != 201) {
-        console.log(res)
-    }
-    check(res, {
-        '/v3/users returns status 201': (r) => r.status === 201,
+        { cookies: cookies }
+      )
     })
 
-    const id = JSON.parse(res.body)["id"]
+    check(res, {
+      '/v3/globalrolebindings returns status 201': (r) => r.status === 201 || r.status === 204,
+    })
+  }
 
+<<<<<<< HEAD:k6/generic/create_roles_users.js
     for (let j = 0; j < bindingsPerUser; j++) {
         const res = retryOnConflict(9, () => {
             return http.post(
@@ -186,4 +225,7 @@ export function createUsers(cookies) {
     }
 
     resourceMetric.add(roleCount + userCount)
+=======
+  resourceMetric.add(roleCount + userCount)
+>>>>>>> 221c664 (format create projects and roles_users scripts, add version checks):k6/create_roles_users.js
 }
