@@ -1,22 +1,25 @@
 import { check, fail, sleep } from 'k6';
 import exec from 'k6/execution';
 import http from 'k6/http';
-import { Gauge } from 'k6/metrics';
+import { Trend } from 'k6/metrics';
 import {
-  getCookies, login, logout, isVersionLT, deleteProjectsByPrefix,
-  deleteUsersByPrefix, createProject, createUser,
-  createRoleTemplate, listProjects, listUsers,
-  createPRTB, createCRTB, getProjectById, getUserById,
-  deleteRoleTemplatesByPrefix
+  getCookies, login, logout, deleteProjectsByPrefix, createProject,
+  listProjects, getProjectById, getRandomElements
 } from "./rancher_utils.js";
+import {
+  createUser, listUsers, listRoles, listRoleTemplates,
+  listRoleBindings, listClusterRoles, listClusterRoleBindings,
+  listCRTBs, listPRTBs, deleteRoleTemplatesByPrefix, deleteUsersByPrefix,
+  createRoleTemplate, createPRTB, createCRTB,
+  deletePRTBsByDescriptionLabel, deleteCRTBsByDescriptionLabel
+} from './rbac_utils.js';
 
 // Parameters
-const vus = 1
+const vus = __ENV.VUS || 5
 const projectCount = Number(__ENV.PROJECT_COUNT) || 10
 const userCount = Number(__ENV.USER_COUNT) || 10
-const customPRTBsPerUser = Number(__ENV.USER_COUNT) || 5
-const customCRTBsPerUser = Number(__ENV.USER_COUNT) || 5
-const enableCatalogRoles = isVersionLT(__ENV.RANCHER_VERSION, "2.11.0") || false
+// const customPRTBsPerUser = Number(__ENV.USER_COUNT) || 5
+// const customCRTBsPerUser = Number(__ENV.USER_COUNT) || 5
 
 // Option setting
 const baseUrl = __ENV.BASE_URL
@@ -46,15 +49,22 @@ export const options = {
     }
   },
   thresholds: {
-    checks: ['rate>0.99']
+    http_req_failed: ['rate<=0.01'], // http errors should be less than 1%
+    http_req_duration: ['p(99)<=500'], // 95% of requests should be below 500ms
+    checks: ['rate>0.99'], // the rate of successful checks should be higher than 99%
   }
 }
 
 // Custom metrics
-const projectsMetric = new Gauge('test_projects')
+const numRolesTrend = new Trend('num_roles');
+const numRoleTemplatesTrend = new Trend('num_role_templates');
+const numRoleBindingsTrend = new Trend('num_role_bindings');
+const numClusterRolesTrend = new Trend('num_cluster_roles');
+const numClusterRoleBindingsTrend = new Trend('num_cluster_role_bindings');
+const numCRTBsTrend = new Trend('num_crtbs');
+const numPRTBsTrend = new Trend('num_prtbs');
 
 // Test functions, in order of execution
-
 export function setup() {
   // log in
   if (!login(baseUrl, {}, username, password)) {
@@ -66,11 +76,13 @@ export function setup() {
   cleanup(cookies)
 
   let clusterIds = getClusterIds(cookies)
+  let clusterId = getRandomElements(clusterIds, 1)[0]
+  console.log(`Utilizing Cluster with the ID ${clusterId}`)
   let myId = getMyId(cookies)
 
   // Create Projects, and Users
   for (let numProjects = 0; numProjects < projectCount; numProjects++) {
-    let res = createProject(baseUrl, cookies, `Test Project ${numProjects + 1}`, clusterIds[numProjects % clusterIds.length], myId)
+    let res = createProject(baseUrl, cookies, `Test Project ${numProjects + 1}`, clusterId, myId)
     if (res.status !== 201) {
       console.log("create project status: ", res.status)
       fail("Failed to create all expected Projects")
@@ -98,12 +110,15 @@ export function setup() {
   let projects = JSON.parse(projectsRes.body)["data"].filter(p => ("displayName" in p["spec"]) && p["spec"]["displayName"].startsWith("Test "))
   let users = JSON.parse(usersRes.body)["data"].filter(p => ("name" in p) && p["name"].startsWith("Test "))
 
+  updateRBACNumbers(cookies)
+
   // return data that remains constant throughout the test
   return {
     cookies: cookies,
     principalIds: getPrincipalIds(cookies),
     myId: myId,
-    clusterIds: clusterIds,
+    // clusterIds: clusterIds,
+    clusterId: clusterId,
     projects: projects,
     users: users,
   }
@@ -144,12 +159,52 @@ function getClusterIds(cookies) {
   return clusters.map(c => c["id"])
 }
 
+// updates count for each of the relevant RBAC metrics
+// NOTE: k6 does not update metrics until the end of an iteration,
+//       so the minimums reported post- the first iteration!
+function updateRBACNumbers(cookies) {
+  let numRoles = Number(JSON.parse(listRoles(baseUrl, cookies).body).count)
+  numRolesTrend.add(numRoles)
+  sleep(2)
+  let numRoleTemplates = Number(JSON.parse(listRoleTemplates(baseUrl, cookies).body).count)
+  numRoleTemplatesTrend.add(numRoleTemplates)
+  sleep(2)
+  let numRoleBindings = Number(JSON.parse(listRoleBindings(baseUrl, cookies).body).count)
+  numRoleBindingsTrend.add(numRoleBindings)
+  sleep(2)
+  let numClusterRoles = Number(JSON.parse(listClusterRoles(baseUrl, cookies).body).count)
+  numClusterRolesTrend.add(numClusterRoles)
+  sleep(2)
+  let numClusterRoleBindings = Number(JSON.parse(listClusterRoleBindings(baseUrl, cookies).body).count)
+  numClusterRoleBindingsTrend.add(numClusterRoleBindings)
+  sleep(2)
+  let numCRTBs = Number(JSON.parse(listCRTBs(baseUrl, cookies).body).count)
+  numCRTBsTrend.add(numCRTBs)
+  sleep(2)
+  let numPRTBs = Number(JSON.parse(listPRTBs(baseUrl, cookies).body).count)
+  numPRTBsTrend.add(numPRTBs)
+  sleep(2)
+
+  return {
+    numRoles: numRoles,
+    numRoleTemplates: numRoleTemplates,
+    numRoleBindings: numRoleBindings,
+    numClusterRoles: numClusterRoles,
+    numClusterRoleBindings: numClusterRoleBindings,
+    numCRTBs: numCRTBs,
+    numPRTBs: numPRTBs,
+  }
+}
+
 function cleanup(cookies) {
   let success = false
   let projectsDeleted = deleteProjectsByPrefix(baseUrl, cookies, "Dartboard ")
   let usersDeleted = deleteUsersByPrefix(baseUrl, cookies, "Dartboard ")
+  let prtbsDeleted = deletePRTBsByDescriptionLabel(baseUrl, cookies)
+  let crtbsDeleted = deleteCRTBsByDescriptionLabel(baseUrl, cookies)
   let roleTemplatesDeleted = deleteRoleTemplatesByPrefix(baseUrl, cookies, "Dartboard ")
-  if (!projectsDeleted || !usersDeleted || !roleTemplatesDeleted) {
+  if (!projectsDeleted || !usersDeleted || !roleTemplatesDeleted
+    || !prtbsDeleted || !crtbsDeleted) {
     fail("failed to delete all objects created by test")
   }
 }
@@ -269,8 +324,6 @@ export function createPRTBs(data) {
   }
 
   let roleTemplateId = JSON.parse(res.body).id
-
-  let userIdx = i % data.users.length
   let user = data.users[i]
 
   res = createPRTB(baseUrl, data.cookies, data.projects[i].id, roleTemplateId, user.id)
@@ -287,9 +340,12 @@ export function createPRTBs(data) {
   sleep(2)
   const cookies = getCookies(baseUrl)
 
+  // updateRBACNumbers with admin cookies
+  updateRBACNumbers(data.cookies)
+
   getProjectById(baseUrl, cookies, data.projects[i].id.replace("/", ":"))
   listProjects(baseUrl, cookies)
-  createProjectExpectFail(baseUrl, cookies, `Test Create Project Should Fail ${i}`, data.clusterIds[i], user.id)
+  createProjectExpectFail(baseUrl, cookies, `Test Create Project Should Fail ${i}`, data.clusterId, user.id)
 
   sleep(1)
   res = logout(baseUrl, cookies);
@@ -336,12 +392,9 @@ export function createCRTBs(data) {
   }
 
   let roleTemplateId = JSON.parse(res.body).id
-
-  let userIdx = i % data.users.length
-  let clusterIdx = i % data.clusterIds.length
   let user = data.users[i]
 
-  res = createCRTB(baseUrl, data.cookies, data.clusterIds[clusterIdx], roleTemplateId, user.id)
+  res = createCRTB(baseUrl, data.cookies, data.clusterId, roleTemplateId, user.id)
 
   if (res.status !== 201) {
     console.log("\nResponse: ", JSON.stringify(res, null, 2), "\n")
@@ -355,9 +408,12 @@ export function createCRTBs(data) {
   sleep(2)
   const cookies = getCookies(baseUrl)
 
+  // updateRBACNumbers with admin cookies
+  updateRBACNumbers(data.cookies)
+
   getProjectById(baseUrl, cookies, data.projects[i].id.replace("/", ":"))
   listProjects(baseUrl, cookies)
-  createProjectExpectFail(baseUrl, cookies, `Test Create Project Should Fail ${i}`, data.clusterIds[i], user.id)
+  createProjectExpectFail(baseUrl, cookies, `Test Create Project Should Fail ${i}`, data.clusterId, user.id)
 
   sleep(1)
   res = logout(baseUrl, cookies);
