@@ -92,7 +92,7 @@ pipeline {
                 echo "${SSH_PUB_KEY}" > ${SSH_KEY_NAME}.pub
                 sh "chmod 644 ${SSH_KEY_NAME}.pub"
                 echo "PUB KEY:"
-                cat ${SSH_KEY_NAME}.pub
+                cat "${SSH_KEY_NAME}.pub"
                 sh "envsubst < ${DART_FILE} > rendered-dart.yaml"
                 echo "RENDERED DART:"
                 cat rendered-dart.yaml
