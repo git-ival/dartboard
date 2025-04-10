@@ -83,9 +83,7 @@ pipeline {
               }
             }
             steps {
-                cat "${HARVESTER_KUBECONFIG}"
-                cat "${env.HARVESTER_KUBECONFIG}"
-                echo "POST-CAT WORKSPACE:"
+                echo "PRE-SHELL WORKSPACE:"
                 sh 'ls -al'
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
                 // Write the public key string into a .pub file
