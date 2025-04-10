@@ -87,6 +87,7 @@ pipeline {
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
                 // Write the public key string into a .pub file
                 try {
+                  echo "before script"
                   sh '''
                     HARVESTER_KUBECONFIG = ${params.HARVESTER_KUBECONFIG}
                     SSH_PEM_KEY = ${params.SSH_PEM_KEY}
