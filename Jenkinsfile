@@ -86,31 +86,25 @@ pipeline {
             steps {
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
                 // Write the public key string into a .pub file
-                try {
-                  echo "before script"
-                  sh '''
-                    HARVESTER_KUBECONFIG = ${params.HARVESTER_KUBECONFIG}
-                    SSH_PEM_KEY = ${params.SSH_PEM_KEY}
-                    SSH_PUB_KEY = ${params.SSH_PUB_KEY}
-                    SSH_KEY_NAME = ${params.SSH_KEY_NAME}
+                sh '''
+                  HARVESTER_KUBECONFIG = ${params.HARVESTER_KUBECONFIG}
+                  SSH_PEM_KEY = ${params.SSH_PEM_KEY}
+                  SSH_PUB_KEY = ${params.SSH_PUB_KEY}
+                  SSH_KEY_NAME = ${params.SSH_KEY_NAME}
 
-                    echo "${SSH_PEM_KEY}" | base64 -d > ${env.SSH_KEY_NAME}
-                    chmod 600 ${env.SSH_KEY_NAME}.pem
+                  echo "${SSH_PEM_KEY}" | base64 -d > ${env.SSH_KEY_NAME}
+                  chmod 600 ${env.SSH_KEY_NAME}.pem
 
-                    echo "${SSH_PUB_KEY}" > ${env.SSH_KEY_NAME}.pub
-                    chmod 644 ${env.SSH_KEY_NAME}.pub
-                    echo "PUB KEY:"
-                    cat ${env.SSH_KEY_NAME}.pub
+                  echo "${SSH_PUB_KEY}" > ${env.SSH_KEY_NAME}.pub
+                  chmod 644 ${env.SSH_KEY_NAME}.pub
+                  echo "PUB KEY:"
+                  cat ${env.SSH_KEY_NAME}.pub
 
-                    envsubst < "${params.DART_FILE}" > rendered-dart.yaml
-                    echo "RENDERED DART:"
-                    cat rendered-dart.yaml
-                    dartboard --dart rendered-dart.yaml deploy
-                  '''
-                }
-                catch(err) {
-                   echo "Error running dartboard: ${err}"
-                }
+                  envsubst < "${params.DART_FILE}" > rendered-dart.yaml
+                  echo "RENDERED DART:"
+                  cat rendered-dart.yaml
+                  dartboard --dart rendered-dart.yaml deploy
+                '''
             }
         }
 
@@ -125,7 +119,6 @@ pipeline {
                 // if the user uploaded a K6_ENV file, source it so all its KEY=VALUE lines
                 // become environment variables for the k6 process
                 // `set` docs: https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html
-                try {
                 sh '''
                   if (params.K6_ENV) {
                       set -o allexport
@@ -137,10 +130,6 @@ pipeline {
                       k6 run --out json="${params.K6_TEST%.js*}-output.json" ${testsDir}/"${params.K6_TEST}"
                   }
                 '''
-                }
-                catch(err) {
-                    echo "Error running K6 test: ${err}"
-                }
             }
         }
 
