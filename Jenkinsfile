@@ -9,10 +9,10 @@ pipeline {
         testsDir = './k6'
         envFile = ".env"
         qaseEnvFile = '.qase.env'
-        HARVESTER_KUBECONFIG = params.HARVESTER_KUBECONFIG
-        SSH_PEM_KEY = params.SSH_PEM_KEY
-        SSH_PUB_KEY = params.SSH_PUB_KEY
-        SSH_KEY_NAME = params.SSH_KEY_NAME
+        HARVESTER_KUBECONFIG = "${params.HARVESTER_KUBECONFIG}"
+        SSH_PEM_KEY = "${params.SSH_PEM_KEY}"
+        SSH_PUB_KEY = "${params.SSH_PUB_KEY}"
+        SSH_KEY_NAME = "${params.SSH_KEY_NAME}"
     }
 
     // No parameters block here—JJB YAML defines them
