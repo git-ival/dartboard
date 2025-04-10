@@ -101,8 +101,6 @@ pipeline {
                     echo "PUB KEY:"
                     cat ${env.SSH_KEY_NAME}.pub
 
-                  # // Render the DART_FILE using `envsubst`, substituting in HARVESTER_KUBECONFIG and other vars
-                  # // docs: https://man7.org/linux/man-pages/man1/envsubst.1.html
                     envsubst < "${params.DART_FILE}" > rendered-dart.yaml
                     echo "RENDERED DART:"
                     cat rendered-dart.yaml
