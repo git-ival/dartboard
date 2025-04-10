@@ -86,7 +86,7 @@ pipeline {
                 cat "${HARVESTER_KUBECONFIG}"
                 cat "${env.HARVESTER_KUBECONFIG}"
                 echo "POST-CAT WORKSPACE:"
-                ls -al
+                sh 'ls -al'
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
                 // Write the public key string into a .pub file
                 sh '''
@@ -103,7 +103,7 @@ pipeline {
                   cat rendered-dart.yaml
                   dartboard --dart rendered-dart.yaml deploy
                 '''
-                sh 'echo "WORKSPACE:"'
+                echo "WORKSPACE:"
                 sh 'ls -al'
             }
         }
