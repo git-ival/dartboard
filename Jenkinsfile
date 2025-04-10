@@ -70,9 +70,9 @@ pipeline {
 
         stage('Setup Infrastructure') {
             agent {
+              label 'vsphere-vpn-1'
               docker {
                 image "${env.imageName}:latest"
-                label 'vsphere-vpn-1'
                 reuseNode true
               }
             }
@@ -100,9 +100,9 @@ pipeline {
 
         stage('Run Validation Tests') {
           agent {
+              label 'vsphere-vpn-1'
               docker {
                 image "${env.imageName}:latest"
-                label 'vsphere-vpn-1'
                 reuseNode true
               }
             }
