@@ -50,7 +50,6 @@ pipeline {
 
         stage('Configure and Build') {
             steps {
-                sh 'printenv'
                 sh 'env'
                 // try {
                 //     sh '''
@@ -83,25 +82,36 @@ pipeline {
               }
             }
             steps {
-                echo "PRE-SHELL WORKSPACE:"
+                echo 'PRE-SHELL WORKSPACE:'
                 sh 'ls -al'
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
                 // Write the public key string into a .pub file
-                sh '''
-                  echo "\${SSH_PEM_KEY}" | base64 -d > \${env.SSH_KEY_NAME}
-                  chmod 600 \${env.SSH_KEY_NAME}.pem
+                echo "${SSH_PEM_KEY}" | base64 -d > ${SSH_KEY_NAME}
+                sh "chmod 600 ${SSH_KEY_NAME}.pem"
 
-                  echo "\${SSH_PUB_KEY}" > \${env.SSH_KEY_NAME}.pub
-                  chmod 644 \${env.SSH_KEY_NAME}.pub
-                  echo "PUB KEY:"
-                  cat \${env.SSH_KEY_NAME}.pub
+                echo "${SSH_PUB_KEY}" > ${SSH_KEY_NAME}.pub
+                sh "chmod 644 ${SSH_KEY_NAME}.pub"
+                echo "PUB KEY:"
+                cat ${SSH_KEY_NAME}.pub
+                sh "envsubst < ${DART_FILE} > rendered-dart.yaml"
+                echo "RENDERED DART:"
+                cat rendered-dart.yaml
+                sh 'dartboard --dart rendered-dart.yaml deploy'
+                // sh '''
+                //   echo "\${SSH_PEM_KEY}" | base64 -d > \${env.SSH_KEY_NAME}
+                //   chmod 600 \${env.SSH_KEY_NAME}.pem
 
-                  envsubst < "\${params.DART_FILE}" > rendered-dart.yaml
-                  echo "RENDERED DART:"
-                  cat rendered-dart.yaml
-                  dartboard --dart rendered-dart.yaml deploy
-                '''
-                echo "WORKSPACE:"
+                //   echo "\${SSH_PUB_KEY}" > \${env.SSH_KEY_NAME}.pub
+                //   chmod 644 \${env.SSH_KEY_NAME}.pub
+                //   echo "PUB KEY:"
+                //   cat \${env.SSH_KEY_NAME}.pub
+
+                //   envsubst < "\${params.DART_FILE}" > rendered-dart.yaml
+                //   echo "RENDERED DART:"
+                //   cat rendered-dart.yaml
+                //   dartboard --dart rendered-dart.yaml deploy
+                // '''
+                echo 'WORKSPACE:'
                 sh 'ls -al'
             }
         }
