@@ -9,7 +9,6 @@ pipeline {
         testsDir = './k6'
         envFile = ".env"
         qaseEnvFile = '.qase.env'
-
     }
 
     // No parameters block here—JJB YAML defines them
@@ -51,20 +50,21 @@ pipeline {
 
         stage('Configure and Build') {
             steps {
-                script {
-                    sh '''
-                      echo "WORKSPACE:"
-                      ls -al
-                      echo "PRE-EXISTING IMAGES:"
-                      docker image ls
-                    '''
-                    // This will run `docker build -t my-image:main .`
-                    docker.build("${env.imageName}:latest")
-                    sh '''
-                      echo "NEW IMAGES:"
-                      docker image ls
-                    '''
-                }
+              script {
+                sh 'printenv'
+                echo "Storing env in file"
+                sh "printenv > ${env.envFile}"
+
+                echo "PRE-EXISTING IMAGES:"
+                sh "docker image ls"
+
+                // This will run `docker build -t my-image:main .`
+                docker.build("${env.imageName}:latest")
+
+                echo "NEW IMAGES:"
+                sh "docker image ls"
+                sh 'ls -al'
+              }
             }
         }
 
@@ -73,31 +73,41 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
+                args "--entrypoint='' --env-file ${envFile}"
               }
             }
             steps {
-              script {
+                echo 'PRE-SHELL WORKSPACE:'
+                sh 'ls -al'
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
                 // Write the public key string into a .pub file
-                sh '''
-                  echo "${SSH_PEM_KEY}" | base64 -d > ${SSH_KEY_NAME}
-                  chmod 600 ${SSH_KEY_NAME}.pem
+                echo "${SSH_PEM_KEY}" | base64 -d > ${SSH_KEY_NAME}
+                sh "chmod 600 ${SSH_KEY_NAME}.pem"
 
-                  echo "${SSH_PUB_KEY}" > ${SSH_KEY_NAME}.pub
-                  chmod 644 ${SSH_KEY_NAME}.pub
-                  echo "PUB KEY:"
-                  cat ${SSH_KEY_NAME}.pub
-                '''
+                echo "${SSH_PUB_KEY}" > ${SSH_KEY_NAME}.pub
+                sh "chmod 644 ${SSH_KEY_NAME}.pub"
+                echo "PUB KEY:"
+                cat "${SSH_KEY_NAME}.pub"
+                sh "envsubst < ${DART_FILE} > rendered-dart.yaml"
+                echo "RENDERED DART:"
+                cat rendered-dart.yaml
+                sh 'dartboard --dart rendered-dart.yaml deploy'
+                // sh '''
+                //   echo "\${SSH_PEM_KEY}" | base64 -d > \${env.SSH_KEY_NAME}
+                //   chmod 600 \${env.SSH_KEY_NAME}.pem
 
-                // Render the DART_FILE using `envsubst`, substituting in HARVESTER_KUBECONFIG and other vars
-                // docs: https://man7.org/linux/man-pages/man1/envsubst.1.html
-                sh '''
-                  envsubst < "${params.DART_FILE}" > rendered-dart.yaml
-                  echo "RENDERED DART:"
-                  cat rendered-dart.yaml
-                  dartboard --dart rendered-dart.yaml deploy
-                '''
-              }
+                //   echo "\${SSH_PUB_KEY}" > \${env.SSH_KEY_NAME}.pub
+                //   chmod 644 \${env.SSH_KEY_NAME}.pub
+                //   echo "PUB KEY:"
+                //   cat \${env.SSH_KEY_NAME}.pub
+
+                //   envsubst < "\${params.DART_FILE}" > rendered-dart.yaml
+                //   echo "RENDERED DART:"
+                //   cat rendered-dart.yaml
+                //   dartboard --dart rendered-dart.yaml deploy
+                // '''
+                echo 'WORKSPACE:'
+                sh 'ls -al'
             }
         }
 
@@ -106,27 +116,24 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
+                args "--entrypoint='' --env-file ${envFile}"
               }
             }
             steps {
-                script {
-                  // if the user uploaded a K6_ENV file, source it so all its KEY=VALUE lines
-                  // become environment variables for the k6 process
-                  // `set` docs: https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html
+                // if the user uploaded a K6_ENV file, source it so all its KEY=VALUE lines
+                // become environment variables for the k6 process
+                // `set` docs: https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html
+                sh '''
                   if (params.K6_ENV) {
-                    sh '''
                       set -o allexport
                       source "${params.K6_ENV}"
                       set +o allexport
                       k6 run --out json="${params.K6_TEST%.js*}-output.json" ${testsDir}/"${params.K6_TEST}"
-                    '''
                   } else {
                     // no env‐file, just run k6 and use any defaults provided in the script itself
-                    sh '''
                       k6 run --out json="${params.K6_TEST%.js*}-output.json" ${testsDir}/"${params.K6_TEST}"
-                    '''
                   }
-                }
+                '''
             }
         }
 
@@ -148,11 +155,9 @@ pipeline {
     post {
       always {
         script {
-          sh '''
-            docker image rm ${env.imageName}
+            sh "docker image rm ${env.imageName}"
             echo "POST-CLEANUP IMAGES:"
-            docker image ls
-          '''
+            sh "docker image ls"
         }
       }
     }
