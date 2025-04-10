@@ -50,10 +50,14 @@ pipeline {
 
         stage('Configure and Build') {
             steps {
+                echo "env:"
+                echo "${env.HARVESTER_CONFIG}"
                 script {
                     sh '''
-                      echo "env:"
-                      printenv
+                      echo "SCRIPT ENV:"
+                      echo "${env.HARVESTER_CONFIG}"
+                      echo .env
+                      cat .env
                       echo "WORKSPACE:"
                       ls -al
                       echo "PRE-EXISTING IMAGES:"
