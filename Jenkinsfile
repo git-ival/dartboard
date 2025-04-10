@@ -50,7 +50,6 @@ pipeline {
 
         stage('Configure and Build') {
             steps {
-                sh 'cat .env'
                 sh 'echo .env'
                 sh 'env'
                 // try {
