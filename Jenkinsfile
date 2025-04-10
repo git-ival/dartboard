@@ -52,6 +52,8 @@ pipeline {
             steps {
                 script {
                     sh '''
+                      echo "env:"
+                      printenv
                       echo "WORKSPACE:"
                       ls -al
                       echo "PRE-EXISTING IMAGES:"
