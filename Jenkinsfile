@@ -29,7 +29,7 @@ pipeline {
                     $class: 'GitSCM',
                     branches: [[name: "*/${branch}"]],
                     userRemoteConfigs: repoConfig,
-                    extensions: [[$class: 'CleanCheckout']]
+                    extensions: scm.extensions + [[$class: 'CleanCheckout']],
                 ]
               }
             }
@@ -53,6 +53,8 @@ pipeline {
             steps {
                 script {
                     sh '''
+                      echo "WORKSPACE:"
+                      ls -al
                       echo "PRE-EXISTING IMAGES:"
                       docker image ls
                     '''
