@@ -50,7 +50,7 @@ pipeline {
 
         stage('Configure and Build') {
             steps {
-                sh 'echo .env'
+                sh 'printenv'
                 sh 'env'
                 // try {
                 //     sh '''
