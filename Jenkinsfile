@@ -70,7 +70,6 @@ pipeline {
 
         stage('Setup Infrastructure') {
             agent {
-              label 'vsphere-vpn-1'
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
@@ -86,12 +85,16 @@ pipeline {
 
                   echo "${SSH_PUB_KEY}" > ${SSH_KEY_NAME}.pub
                   chmod 644 ${SSH_KEY_NAME}.pub
+                  echo "PUB KEY:"
+                  cat ${SSH_KEY_NAME}.pub
                 '''
 
                 // Render the DART_FILE using `envsubst`, substituting in HARVESTER_KUBECONFIG and other vars
                 // docs: https://man7.org/linux/man-pages/man1/envsubst.1.html
                 sh '''
                   envsubst < "${params.DART_FILE}" > rendered-dart.yaml
+                  echo "RENDERED DART:"
+                  cat rendered-dart.yaml
                   dartboard --dart rendered-dart.yaml deploy
                 '''
               }
@@ -100,7 +103,6 @@ pipeline {
 
         stage('Run Validation Tests') {
           agent {
-              label 'vsphere-vpn-1'
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
