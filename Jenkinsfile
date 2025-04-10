@@ -9,10 +9,6 @@ pipeline {
         testsDir = './k6'
         envFile = ".env"
         qaseEnvFile = '.qase.env'
-        HARVESTER_KUBECONFIG = "${params.HARVESTER_KUBECONFIG}"
-        SSH_PEM_KEY = "${params.SSH_PEM_KEY}"
-        SSH_PUB_KEY = "${params.SSH_PUB_KEY}"
-        SSH_KEY_NAME = "${params.SSH_KEY_NAME}"
     }
 
     // No parameters block here—JJB YAML defines them
@@ -83,6 +79,11 @@ pipeline {
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
                 // Write the public key string into a .pub file
                 sh '''
+                  HARVESTER_KUBECONFIG = ${params.HARVESTER_KUBECONFIG}
+                  SSH_PEM_KEY = ${params.SSH_PEM_KEY}
+                  SSH_PUB_KEY = ${params.SSH_PUB_KEY}
+                  SSH_KEY_NAME = ${params.SSH_KEY_NAME}
+
                   echo "${SSH_PEM_KEY}" | base64 -d > ${env.SSH_KEY_NAME}
                   chmod 600 ${env.SSH_KEY_NAME}.pem
 
@@ -90,11 +91,9 @@ pipeline {
                   chmod 644 ${env.SSH_KEY_NAME}.pub
                   echo "PUB KEY:"
                   cat ${env.SSH_KEY_NAME}.pub
-                '''
 
-                // Render the DART_FILE using `envsubst`, substituting in HARVESTER_KUBECONFIG and other vars
-                // docs: https://man7.org/linux/man-pages/man1/envsubst.1.html
-                sh '''
+                # // Render the DART_FILE using `envsubst`, substituting in HARVESTER_KUBECONFIG and other vars
+                # // docs: https://man7.org/linux/man-pages/man1/envsubst.1.html
                   envsubst < "${params.DART_FILE}" > rendered-dart.yaml
                   echo "RENDERED DART:"
                   cat rendered-dart.yaml
