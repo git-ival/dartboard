@@ -9,7 +9,10 @@ pipeline {
         testsDir = './k6'
         envFile = ".env"
         qaseEnvFile = '.qase.env'
-
+        HARVESTER_KUBECONFIG = params.HARVESTER_KUBECONFIG
+        SSH_PEM_KEY = params.SSH_PEM_KEY
+        SSH_PUB_KEY = params.SSH_PUB_KEY
+        SSH_KEY_NAME = params.SSH_KEY_NAME
     }
 
     // No parameters block here—JJB YAML defines them
@@ -80,13 +83,13 @@ pipeline {
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
                 // Write the public key string into a .pub file
                 sh '''
-                  echo "${SSH_PEM_KEY}" | base64 -d > ${SSH_KEY_NAME}
-                  chmod 600 ${SSH_KEY_NAME}.pem
+                  echo "${SSH_PEM_KEY}" | base64 -d > ${env.SSH_KEY_NAME}
+                  chmod 600 ${env.SSH_KEY_NAME}.pem
 
-                  echo "${SSH_PUB_KEY}" > ${SSH_KEY_NAME}.pub
-                  chmod 644 ${SSH_KEY_NAME}.pub
+                  echo "${SSH_PUB_KEY}" > ${env.SSH_KEY_NAME}.pub
+                  chmod 644 ${env.SSH_KEY_NAME}.pub
                   echo "PUB KEY:"
-                  cat ${SSH_KEY_NAME}.pub
+                  cat ${env.SSH_KEY_NAME}.pub
                 '''
 
                 // Render the DART_FILE using `envsubst`, substituting in HARVESTER_KUBECONFIG and other vars
