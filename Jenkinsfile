@@ -63,6 +63,7 @@ pipeline {
 
                 echo "NEW IMAGES:"
                 sh "docker image ls"
+                sh 'ls -al'
               }
             }
         }
