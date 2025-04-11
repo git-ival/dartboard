@@ -50,6 +50,7 @@ pipeline {
 
         stage('Configure and Build') {
             steps {
+              script {
                 sh 'printenv'
                 echo "Storing env in file"
                 sh "printenv > ${env.envFile}"
@@ -58,10 +59,11 @@ pipeline {
                 sh "docker image ls"
 
                 // This will run `docker build -t my-image:main .`
-                sh "docker.build(${env.imageName}:latest)"
+                docker.build("${env.imageName}:latest")
 
                 echo "NEW IMAGES:"
                 sh "docker image ls"
+              }
             }
         }
 
@@ -152,11 +154,9 @@ pipeline {
     post {
       always {
         script {
-          sh '''
-            docker image rm ${env.imageName}
+            sh "docker image rm ${env.imageName}"
             echo "POST-CLEANUP IMAGES:"
-            docker image ls
-          '''
+            sh "docker image ls"
         }
       }
     }
