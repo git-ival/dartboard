@@ -58,7 +58,7 @@ pipeline {
                 sh "docker image ls"
 
                 // This will run `docker build -t my-image:main .`
-                docker.build("${env.imageName}:latest")
+                sh "docker.build(${env.imageName}:latest)"
 
                 echo "NEW IMAGES:"
                 sh "docker image ls"
