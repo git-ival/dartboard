@@ -1,7 +1,7 @@
 // Declarative Pipeline Syntax
 
 import groovy.text.SimpleTemplateEngine
-import groovy.transform.NonCPS
+import com.cloudbees.groovy.cps.NonCPS
 
 /**
  * Renders a GString‑style templateText, substituting in the binding map.
