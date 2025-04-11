@@ -82,12 +82,18 @@ pipeline {
                 echo "NEW IMAGES:"
                 sh "docker image ls"
                 sh 'ls -al'
+              }
+            }
+        }
 
+        stage('Render Dart file') {
+          steps {
+              script {
                 echo 'PRE-SHELL WORKSPACE:'
                 sh 'ls -al'
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
                 // Write the public key string into a .pub file
-                sh "cat ${env.SSH_PEM_KEY} | base64 -d > ${env.SSH_KEY_NAME}"
+                sh "cat ${env.SSH_PEM_KEY} | base64 -d > ${env.SSH_KEY_NAME}.pem"
                 sh "chmod 600 ${env.SSH_KEY_NAME}.pem"
 
                 sh "cat ${env.SSH_PUB_KEY} > ${env.SSH_KEY_NAME}.pub"
@@ -114,7 +120,7 @@ pipeline {
                 echo "RENDERED DART:"
                 sh "cat rendered-dart.yaml"
               }
-            }
+          }
         }
 
         stage('Setup Infrastructure') {
