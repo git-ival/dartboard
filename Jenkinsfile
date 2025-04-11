@@ -79,6 +79,7 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
+                args "--entrypoint=''"
               }
             }
             steps {
@@ -121,6 +122,7 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
+                args "--entrypoint=''"
               }
             }
             steps {
