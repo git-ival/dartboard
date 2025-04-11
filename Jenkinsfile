@@ -50,27 +50,18 @@ pipeline {
 
         stage('Configure and Build') {
             steps {
-                sh 'env'
-                // try {
-                //     sh '''
-                //       echo "SCRIPT ENV:"
-                //       echo "${env.HARVESTER_CONFIG}"
-                //       echo .env
-                //       cat .env
-                //       echo "WORKSPACE:"
-                //       ls -al
-                //       echo "PRE-EXISTING IMAGES:"
-                //       docker image ls
-                //     '''
-                //     // This will run `docker build -t my-image:main .`
-                //     docker.build("${env.imageName}:latest")
-                //     sh '''
-                //       echo "NEW IMAGES:"
-                //       docker image ls
-                //     '''
-                // } catch (err) {
-                //   echo "ERROR: Failed to build image: ${err}"
-                // }
+                sh 'printenv'
+                echo "Storing env in file"
+                sh "printenv > ${env.envFile}"
+
+                echo "PRE-EXISTING IMAGES:"
+                sh "docker image ls"
+
+                // This will run `docker build -t my-image:main .`
+                docker.build("${env.imageName}:latest")
+
+                echo "NEW IMAGES:"
+                sh "docker image ls"
             }
         }
 
@@ -79,7 +70,7 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
-                args "--entrypoint=''"
+                args "--entrypoint='' --env-file ${envFile}"
               }
             }
             steps {
@@ -122,7 +113,7 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
-                args "--entrypoint=''"
+                args "--entrypoint='' --env-file ${envFile}"
               }
             }
             steps {
