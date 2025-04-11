@@ -78,6 +78,7 @@ pipeline {
               }
             }
             steps {
+              script {
                 echo 'PRE-SHELL WORKSPACE:'
                 sh 'ls -al'
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
@@ -109,6 +110,7 @@ pipeline {
                 // '''
                 echo 'WORKSPACE:'
                 sh 'ls -al'
+              }
             }
         }
 
@@ -134,7 +136,7 @@ pipeline {
                   '''
                 } else {
                   // no env‐file, just run k6 and use any defaults provided in the script itself
-                    sh "k6 run --out json=\"\${params.K6_TEST%.js*}-output.json\" ${env.testsDir}${params.K6_TEST}"
+                    sh "k6 run --out json=\"\${K6_TEST%.js*}-output.json\" ${env.testsDir}${params.K6_TEST}"
                 }
               }
             }
