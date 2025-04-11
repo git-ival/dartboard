@@ -82,20 +82,7 @@ pipeline {
                 echo "NEW IMAGES:"
                 sh "docker image ls"
                 sh 'ls -al'
-              }
-            }
-        }
 
-        stage('Setup Infrastructure') {
-            agent {
-              docker {
-                image "${env.imageName}:latest"
-                reuseNode true
-                args "--entrypoint='' --env-file ${envFile}"
-              }
-            }
-            steps {
-              script {
                 echo 'PRE-SHELL WORKSPACE:'
                 sh 'ls -al'
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
@@ -109,13 +96,12 @@ pipeline {
                 cat "${env.SSH_KEY_NAME}.pub"
 
                 // 1) Read the raw template file into a String
-                def rawTemplate = readFile params.DART_FILE            // readFile step reads workspace files :contentReference[oaicite:2]{index=2}
+                def rawTemplate = readFile params.DART_FILE  // readFile step reads workspace files
 
                 // 2) Build a binding map of all the env vars to be substituted
                 def binding = [
                   HARVESTER_KUBECONFIG: env.HARVESTER_KUBECONFIG,
                   SSH_KEY_NAME       : env.SSH_KEY_NAME,
-                  SSH_KEY_NAME_PUB   : "${env.SSH_KEY_NAME}.pub"
                 ]
 
                 // 3) Call the helper render method
@@ -127,6 +113,20 @@ pipeline {
                 // sh "envsubst < ${env.DART_FILE} > rendered-dart.yaml"
                 echo "RENDERED DART:"
                 sh "cat rendered-dart.yaml"
+              }
+            }
+        }
+
+        stage('Setup Infrastructure') {
+            agent {
+              docker {
+                image "${env.imageName}:latest"
+                reuseNode true
+                args "--entrypoint='' --env-file ${env.envFile}"
+              }
+            }
+            steps {
+              script {
                 sh 'dartboard --dart rendered-dart.yaml deploy'
 
                 echo 'WORKSPACE:'
