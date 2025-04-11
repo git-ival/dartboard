@@ -1,5 +1,22 @@
 // Declarative Pipeline Syntax
 
+import groovy.text.SimpleTemplateEngine
+import com.cloudbees.groovy.cps.NonCPS
+
+/**
+ * Renders a GString‑style templateText, substituting in the binding map.
+ * Must be @NonCPS because SimpleTemplateEngine and Template aren’t Serializable.
+ * Note: This will fail if the template does not include one or more of the expected vars inside the bindings map
+ * https://docs.groovy-lang.org/latest/html/api/groovy/text/SimpleTemplateEngine.html
+ */
+@NonCPS
+String renderTemplateText(String templateText, Map binding) {
+    def engine   = new SimpleTemplateEngine()
+    def template = engine.createTemplate(templateText)
+    return template.make(binding).toString()
+}
+
+
 pipeline {
     agent { label 'vsphere-vpn-1' }
 
@@ -90,24 +107,28 @@ pipeline {
                 sh "chmod 644 ${env.SSH_KEY_NAME}.pub"
                 echo "PUB KEY:"
                 cat "${env.SSH_KEY_NAME}.pub"
-                sh "envsubst < ${env.DART_FILE} > rendered-dart.yaml"
+
+                // 1) Read the raw template file into a String
+                def rawTemplate = readFile params.DART_FILE            // readFile step reads workspace files :contentReference[oaicite:2]{index=2}
+
+                // 2) Build a binding map of all the env vars to be substituted
+                def binding = [
+                  HARVESTER_KUBECONFIG: env.HARVESTER_KUBECONFIG,
+                  SSH_KEY_NAME       : env.SSH_KEY_NAME,
+                  SSH_KEY_NAME_PUB   : "${env.SSH_KEY_NAME}.pub"
+                ]
+
+                // 3) Call the helper render method
+                def rendered = renderTemplateText(rawTemplate, binding)
+
+                // 4) Write the fully‐rendered YAML to file
+                writeFile file: 'rendered-dart.yaml', text: rendered
+
+                // sh "envsubst < ${env.DART_FILE} > rendered-dart.yaml"
                 echo "RENDERED DART:"
                 sh "cat rendered-dart.yaml"
                 sh 'dartboard --dart rendered-dart.yaml deploy'
-                // sh '''
-                //   echo "\${SSH_PEM_KEY}" | base64 -d > \${env.SSH_KEY_NAME}
-                //   chmod 600 \${env.SSH_KEY_NAME}.pem
 
-                //   echo "\${SSH_PUB_KEY}" > \${env.SSH_KEY_NAME}.pub
-                //   chmod 644 \${env.SSH_KEY_NAME}.pub
-                //   echo "PUB KEY:"
-                //   cat \${env.SSH_KEY_NAME}.pub
-
-                //   envsubst < "\${params.DART_FILE}" > rendered-dart.yaml
-                //   echo "RENDERED DART:"
-                //   cat rendered-dart.yaml
-                //   dartboard --dart rendered-dart.yaml deploy
-                // '''
                 echo 'WORKSPACE:'
                 sh 'ls -al'
               }
