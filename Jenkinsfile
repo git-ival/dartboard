@@ -54,6 +54,7 @@ pipeline {
                 sh 'printenv'
                 echo "Storing env in file"
                 sh "printenv > ${env.envFile}"
+                sh "cat ${env.envFile}"
 
                 echo "PRE-EXISTING IMAGES:"
                 sh "docker image ls"
@@ -77,20 +78,21 @@ pipeline {
               }
             }
             steps {
+              script {
                 echo 'PRE-SHELL WORKSPACE:'
                 sh 'ls -al'
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
                 // Write the public key string into a .pub file
-                echo "${SSH_PEM_KEY}" | base64 -d > ${SSH_KEY_NAME}
-                sh "chmod 600 ${SSH_KEY_NAME}.pem"
+                sh "cat ${env.SSH_PEM_KEY} | base64 -d > ${env.SSH_KEY_NAME}"
+                sh "chmod 600 ${env.SSH_KEY_NAME}.pem"
 
-                echo "${SSH_PUB_KEY}" > ${SSH_KEY_NAME}.pub
-                sh "chmod 644 ${SSH_KEY_NAME}.pub"
+                sh "cat ${env.SSH_PUB_KEY} > ${env.SSH_KEY_NAME}.pub"
+                sh "chmod 644 ${env.SSH_KEY_NAME}.pub"
                 echo "PUB KEY:"
-                cat "${SSH_KEY_NAME}.pub"
-                sh "envsubst < ${DART_FILE} > rendered-dart.yaml"
+                cat "${env.SSH_KEY_NAME}.pub"
+                sh "envsubst < ${env.DART_FILE} > rendered-dart.yaml"
                 echo "RENDERED DART:"
-                cat rendered-dart.yaml
+                sh "cat rendered-dart.yaml"
                 sh 'dartboard --dart rendered-dart.yaml deploy'
                 // sh '''
                 //   echo "\${SSH_PEM_KEY}" | base64 -d > \${env.SSH_KEY_NAME}
@@ -108,6 +110,7 @@ pipeline {
                 // '''
                 echo 'WORKSPACE:'
                 sh 'ls -al'
+              }
             }
         }
 
@@ -120,20 +123,22 @@ pipeline {
               }
             }
             steps {
+              script {
                 // if the user uploaded a K6_ENV file, source it so all its KEY=VALUE lines
                 // become environment variables for the k6 process
                 // `set` docs: https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html
-                sh '''
-                  if (params.K6_ENV) {
-                      set -o allexport
-                      source "${params.K6_ENV}"
-                      set +o allexport
-                      k6 run --out json="${params.K6_TEST%.js*}-output.json" ${testsDir}/"${params.K6_TEST}"
-                  } else {
-                    // no env‐file, just run k6 and use any defaults provided in the script itself
-                      k6 run --out json="${params.K6_TEST%.js*}-output.json" ${testsDir}/"${params.K6_TEST}"
-                  }
-                '''
+                if (params.K6_ENV) {
+                  sh '''
+                    set -o allexport
+                    source "${params.K6_ENV}"
+                    set +o allexport
+                    k6 run --out json="${params.K6_TEST%.js*}-output.json" ${testsDir}/"${params.K6_TEST}"
+                  '''
+                } else {
+                  // no env‐file, just run k6 and use any defaults provided in the script itself
+                    sh "k6 run --out json=\"\${K6_TEST%.js*}-output.json\" ${env.testsDir}${params.K6_TEST}"
+                }
+              }
             }
         }
 
