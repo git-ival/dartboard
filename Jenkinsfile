@@ -108,7 +108,7 @@ pipeline {
           steps {
               script {
                 // 1) Read the raw template file into a String
-                def rawTemplate = readFile(params.DART_FILE)  // readFile step reads workspace files
+                def rawTemplate = readFile file: env.DART_FILE  // readFile step reads workspace files
 
                 // 2) Build a binding map of all the env vars to be substituted
                 def binding = [
