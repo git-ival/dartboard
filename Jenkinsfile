@@ -93,7 +93,7 @@ pipeline {
                 sh 'ls -al'
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
                 // Write the public key string into a .pub file
-                sh "echo ${env.SSH_PEM_KEY} | base64 -d > ${env.SSH_KEY_NAME}.pem"
+                sh "echo ${env.SSH_PEM_KEY} | base64 -di > ${env.SSH_KEY_NAME}.pem"
                 sh "chmod 600 ${env.SSH_KEY_NAME}.pem"
 
                 sh "echo ${env.SSH_PUB_KEY} > ${env.SSH_KEY_NAME}.pub"
