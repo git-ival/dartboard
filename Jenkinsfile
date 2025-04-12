@@ -99,7 +99,7 @@ pipeline {
                 sh "echo ${env.SSH_PUB_KEY} > ${env.SSH_KEY_NAME}.pub"
                 sh "chmod 644 ${env.SSH_KEY_NAME}.pub"
                 echo "PUB KEY:"
-                cat "${env.SSH_KEY_NAME}.pub"
+                sh "cat ${env.SSH_KEY_NAME}.pub"
 
                 // 1) Read the raw template file into a String
                 def rawTemplate = readFile params.DART_FILE  // readFile step reads workspace files
@@ -111,6 +111,7 @@ pipeline {
                 ]
 
                 // 3) Call the helper render method
+                echo "RENDERING TEMPLATE:"
                 def rendered = renderTemplateText(rawTemplate, binding)
 
                 // 4) Write the fully‐rendered YAML to file
