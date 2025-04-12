@@ -93,13 +93,13 @@ pipeline {
                 sh 'ls -al'
                 // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
                 // Write the public key string into a .pub file
-                sh "echo ${env.SSH_PEM_KEY} | base64 -d > ${env.SSH_KEY_NAME}.pem"
+                sh "echo ${env.SSH_PEM_KEY} | base64 -di > ${env.SSH_KEY_NAME}.pem"
                 sh "chmod 600 ${env.SSH_KEY_NAME}.pem"
 
                 sh "echo ${env.SSH_PUB_KEY} > ${env.SSH_KEY_NAME}.pub"
                 sh "chmod 644 ${env.SSH_KEY_NAME}.pub"
                 echo "PUB KEY:"
-                cat "${env.SSH_KEY_NAME}.pub"
+                sh "cat ${env.SSH_KEY_NAME}.pub"
 
                 // 1) Read the raw template file into a String
                 def rawTemplate = readFile params.DART_FILE  // readFile step reads workspace files
@@ -111,6 +111,7 @@ pipeline {
                 ]
 
                 // 3) Call the helper render method
+                echo "RENDERING TEMPLATE:"
                 def rendered = renderTemplateText(rawTemplate, binding)
 
                 // 4) Write the fully‐rendered YAML to file
