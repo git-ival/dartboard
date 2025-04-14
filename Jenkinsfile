@@ -106,27 +106,31 @@ pipeline {
 
         stage('Render Dart file') {
           steps {
-              script {
-                // 1) Read the raw template file into a String
-                def rawTemplate = readFile file: env.DART_FILE  // readFile step reads workspace files
+            withFileParameter('DART_FILE') {
+              withFileParameter('HARVESTER_KUBECONFIG'){
+                script {
+                  // 1) Read the raw template file into a String
+                  def rawTemplate = readFile file: $DART_FILE  // readFile step reads workspace files
 
-                // 2) Build a binding map of all the env vars to be substituted
-                def binding = [
-                  HARVESTER_KUBECONFIG: env.HARVESTER_KUBECONFIG,
-                  SSH_KEY_NAME       : env.SSH_KEY_NAME,
-                ]
+                  // 2) Build a binding map of all the env vars to be substituted
+                  def binding = [
+                    HARVESTER_KUBECONFIG: $HARVESTER_KUBECONFIG,
+                    SSH_KEY_NAME       : env.SSH_KEY_NAME,
+                  ]
 
-                // 3) Call the helper render method
-                echo "RENDERING TEMPLATE:"
-                def rendered = renderTemplateText(rawTemplate, binding)
+                  // 3) Call the helper render method
+                  echo "RENDERING TEMPLATE:"
+                  def rendered = renderTemplateText(rawTemplate, binding)
 
-                // 4) Write the fully‐rendered YAML to file
-                writeFile file: 'rendered-dart.yaml', text: rendered
+                  // 4) Write the fully‐rendered YAML to file
+                  writeFile file: 'rendered-dart.yaml', text: rendered
 
-                // sh "envsubst < ${env.DART_FILE} > rendered-dart.yaml"
-                echo "RENDERED DART:"
-                sh "cat rendered-dart.yaml"
+                  // sh "envsubst < ${env.DART_FILE} > rendered-dart.yaml"
+                  echo "RENDERED DART:"
+                  sh "cat rendered-dart.yaml"
+                }
               }
+            }
           }
         }
 
@@ -140,10 +144,9 @@ pipeline {
             }
             steps {
               script {
-                sh 'dartboard --dart rendered-dart.yaml deploy'
-
                 echo 'WORKSPACE:'
                 sh 'ls -al'
+                sh 'dartboard --dart rendered-dart.yaml deploy'
               }
             }
         }
