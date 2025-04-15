@@ -109,6 +109,7 @@ pipeline {
             withFileParameter('DART_FILE') {
               withFileParameter('HARVESTER_KUBECONFIG'){
                 script {
+                  sh 'cat $DART_FILE'
                   // 1) Read the raw template file into a String
                   def rawTemplate = readFile file: $DART_FILE  // readFile step reads workspace files
 
