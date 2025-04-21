@@ -22,4 +22,7 @@ RUN cd $WORKSPACE && \
 FROM grafana/k6:${K6_VERSION}
 COPY --from=builder /usr/local/bin/dartboard /bin/dartboard
 
+RUN apk update && \
+    apk add bash
+
 CMD [ "dartboard" ]
