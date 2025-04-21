@@ -184,16 +184,20 @@ pipeline {
                 // if the user uploaded a K6_ENV file, source it so all its KEY=VALUE lines
                 // become environment variables for the k6 process
                 // `set` docs: https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html
-                if (fileExists(env.k6EnvFile)) {
+
+                // Compute the output filename in Groovy
+                def baseName = params.K6_TEST.replaceFirst(/\.js$/, '')
+                def outJson  = "${baseName}-output.json"
+
+                if (fileExists(env.K6_ENV_FILE) && params.K6_ENV?.trim()) {
                   sh """
                     set -o allexport
-                    source ${env.k6EnvFile}
+                    source ${env.K6_ENV_FILE}
                     set +o allexport
-                    k6 run --out json=\"${params.K6_TEST%.js*}-output.json\" ${testsDir}/${params.K6_TEST}
+                    k6 run --out json="${outJson}" ${env.TESTS_DIR}/${params.K6_TEST}
                   """
                 } else {
-                  // no env‐file, just run k6 and use any defaults provided in the script itself
-                    sh "k6 run --out json=\"${params.K6_TEST%.js*}-output.json\" ${env.testsDir}/${params.K6_TEST}"
+                  sh "k6 run --out json=\"${outJson}\" ${env.TESTS_DIR}/${params.K6_TEST}"
                 }
               }
             }
