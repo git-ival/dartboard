@@ -130,23 +130,16 @@ pipeline {
         stage('Render Dart file') {
           steps {
             script {
-              // 1) Read the raw template file into a String
-              def rawTemplate = readFile(env.templateDartFile)  // readFile step reads workspace files
+              // 1) Write variables into env for envsubst
+              export HARVESTER_KUBECONFIG=${env.harvesterKubeconfig}
+              export SSH_KEY_NAME=${env.SSH_KEY_NAME}
 
-              // 2) Build a binding map of all the env vars to be substituted
-              def binding = [
-                HARVESTER_KUBECONFIG: env.harvesterKubeconfig,
-                SSH_KEY_NAME        : env.SSH_KEY_NAME,
-              ]
+              // 2) Substitute the variables into the dart file
+              envsubst < ${env.DART_FILE} > ${env.renderedDartFile}
 
-              // 3) Call the helper render method
-              echo "RENDERING TEMPLATE:"
-              def rendered = renderTemplateText(rawTemplate, binding)
-
-              // 4) Write the fully‐rendered YAML to file
+              // 3) Write the fully‐rendered YAML to file
               writeFile file: env.renderedDartFile, text: rendered
 
-              // sh "envsubst < ${env.DART_FILE} > rendered-dart.yaml"
               echo "RENDERED DART:"
               sh "cat ${env.renderedDartFile}"
             }
