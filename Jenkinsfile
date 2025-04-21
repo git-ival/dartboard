@@ -74,7 +74,7 @@ pipeline {
               script {
                 sh 'printenv'
                 echo "Storing env in file"
-                sh "printenv | egrep '^(ARM_|CATTLE_|ADMIN|USER|DO|RANCHER_|AWS_|DEBUG|LOGLEVEL|DEFAULT_|OS_|DOCKER_|CLOUD_|KUBE|BUILD_NUMBER|AZURE|TEST_|QASE_|SLACK_).*=.+' | sort > ${env.envFile}"
+                sh "printenv | egrep '^(ARM_|CATTLE_|ADMIN|USER|DO|RANCHER_|AWS_|DEBUG|LOGLEVEL|DEFAULT_|OS_|DOCKER_|CLOUD_|KUBE|BUILD_NUMBER|AZURE|TEST_|QASE_|SLACK_|harvester|k6|K6).*=.+' | sort > ${env.envFile}"
                 sh "cat ${env.envFile}"
 
                 echo "PRE-EXISTING IMAGES:"
@@ -116,13 +116,13 @@ pipeline {
               sh 'ls -al'
               // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
               // Write the public key string into a .pub file
-              sh "echo ${env.SSH_PEM_KEY} | base64 -di > ${env.SSH_KEY_NAME}.pem"
-              sh "chmod 600 ${env.SSH_KEY_NAME}.pem"
+              sh "echo ${env.SSH_PEM_KEY} | base64 -di > ${WORKSPACE}/${env.SSH_KEY_NAME}.pem"
+              sh "chmod 600 ${WORKSPACE}/${env.SSH_KEY_NAME}.pem"
 
-              sh "echo ${env.SSH_PUB_KEY} > ${env.SSH_KEY_NAME}.pub"
-              sh "chmod 644 ${env.SSH_KEY_NAME}.pub"
+              sh "echo ${env.SSH_PUB_KEY} > ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
+              sh "chmod 644 ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
               echo "PUB KEY:"
-              sh "cat ${env.SSH_KEY_NAME}.pub"
+              sh "cat ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
             }
           }
         }
@@ -132,7 +132,7 @@ pipeline {
             sh """
               # 1) Write variables into env for envsubst
               export HARVESTER_KUBECONFIG=\${WORKSPACE}/${env.harvesterKubeconfig}
-              export SSH_KEY_NAME=${env.SSH_KEY_NAME}
+              export SSH_KEY_NAME=\${WORKSPACE}/${env.SSH_KEY_NAME}
 
               # 2) Substitute the variables into the dart file, output to rendered dart file
               envsubst < ${env.templateDartFile} > ${env.renderedDartFile}
