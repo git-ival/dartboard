@@ -74,7 +74,7 @@ pipeline {
               script {
                 sh 'printenv'
                 echo "Storing env in file"
-                sh "printenv > ${env.envFile}"
+                sh "printenv | egrep '^(ARM_|CATTLE_|ADMIN|USER|DO|RANCHER_|AWS_|DEBUG|LOGLEVEL|DEFAULT_|OS_|DOCKER_|CLOUD_|KUBE|BUILD_NUMBER|AZURE|TEST_|QASE_|SLACK_).*=.+' | sort > ${env.envFile}"
                 sh "cat ${env.envFile}"
 
                 echo "PRE-EXISTING IMAGES:"
