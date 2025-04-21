@@ -135,7 +135,7 @@ pipeline {
               export SSH_KEY_NAME=${env.SSH_KEY_NAME}
 
               # 2) Substitute the variables into the dart file, output to rendered dart file
-              envsubst < ${env.DART_FILE} > ${env.renderedDartFile}
+              envsubst < ${env.templateDartFile} > ${env.renderedDartFile}
 
               echo "RENDERED DART:"
               cat ${env.renderedDartFile}
