@@ -189,11 +189,11 @@ pipeline {
                     set -o allexport
                     source ${env.k6EnvFile}
                     set +o allexport
-                    k6 run --out json=${params.K6_TEST%.js*}-output.json ${testsDir}/${params.K6_TEST}
+                    k6 run --out json=\"${params.K6_TEST%.js*}-output.json\" ${testsDir}/${params.K6_TEST}
                   """
                 } else {
                   // no env‐file, just run k6 and use any defaults provided in the script itself
-                    sh "k6 run --out json=${K6_TEST%.js*}-output.json ${env.testsDir}/${params.K6_TEST}"
+                    sh "k6 run --out json=\"${params.K6_TEST%.js*}-output.json\" ${env.testsDir}/${params.K6_TEST}"
                 }
               }
             }
