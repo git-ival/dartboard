@@ -129,20 +129,17 @@ pipeline {
 
         stage('Render Dart file') {
           steps {
-            script {
+            sh """
               // 1) Write variables into env for envsubst
-              export HARVESTER_KUBECONFIG=${env.harvesterKubeconfig}
+              export HARVESTER_KUBECONFIG=\${WORKSPACE}/${env.harvesterKubeconfig}
               export SSH_KEY_NAME=${env.SSH_KEY_NAME}
 
-              // 2) Substitute the variables into the dart file
+              // 2) Substitute the variables into the dart file, output to rendered dart file
               envsubst < ${env.DART_FILE} > ${env.renderedDartFile}
 
-              // 3) Write the fully‐rendered YAML to file
-              writeFile file: env.renderedDartFile, text: rendered
-
               echo "RENDERED DART:"
-              sh "cat ${env.renderedDartFile}"
-            }
+              cat ${env.renderedDartFile}
+            """
           }
         }
 
