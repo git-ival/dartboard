@@ -148,7 +148,7 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
-                args "--entrypoint='' --env-file ${env.envFile}"
+                args "--entrypoint='' --env-file ${WORKSPACE}/${env.envFile}"
               }
             }
             steps {
@@ -165,7 +165,7 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
-                args "--entrypoint='' --env-file ${envFile}"
+                args "--entrypoint='' --env-file ${WORKSPACE}/${envFile}"
               }
             }
             steps {
