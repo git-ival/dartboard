@@ -130,7 +130,6 @@ pipeline {
         stage('Render Dart file') {
           steps {
             script {
-              sh "cat ${params.DART_FILE}"
               // 1) Read the raw template file into a String
               def rawTemplate = readFile file: env.templateDartFile  // readFile step reads workspace files
 
