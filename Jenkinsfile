@@ -191,24 +191,19 @@ pipeline {
               }
             }
         }
-
-        /*
-        Because all docker stages share the same container and workspace (due to `reuseNode true`),
-        any files written in the container (e.g. terraform.tfstate, terraform.tfstate.backup, or k6 output.json)
-        end up directly on the Jenkins agent’s workspace.
-        */
-        stage('Archive Artifacts') {
-            steps {
-                echo "Archiving Terraform state and K6 test results..."
-                // wildcard for any *.tfstate or backup, plus our k6 json output
-                archiveArtifacts artifacts: '**/*.tfstate*, **/*.output.json', fingerprint: true
-            }
-        }
     }
 
     post {
       always {
         script {
+            /*
+            Because all docker stages share the same container and workspace (due to `reuseNode true`),
+            any files written in the container (e.g. terraform.tfstate, terraform.tfstate.backup, or k6 output.json)
+            end up directly on the Jenkins agent’s workspace.
+            */
+            echo "Archiving Terraform state and K6 test results..."
+            // wildcard for any *.tfstate or backup, plus our k6 json output
+            archiveArtifacts artifacts: '**/*.tfstate*, **/*.output.json', fingerprint: true
             sh "docker image rm ${env.imageName}"
             echo "POST-CLEANUP IMAGES:"
             sh "docker image ls"
