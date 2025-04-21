@@ -26,6 +26,10 @@ pipeline {
         testsDir = './k6'
         envFile = ".env"
         qaseEnvFile = '.qase.env'
+        k6EnvFile = 'k6.env'
+        harvesterKubeconfig = 'harvester.kubeconfig'
+        templateDartFile = 'template-dart.yaml'
+        renderedDartFile = 'rendered-dart.yaml'
     }
 
     // No parameters block here—JJB YAML defines them
@@ -86,6 +90,25 @@ pipeline {
             }
         }
 
+        stage('Prepare Parameter Files') {
+          steps {
+            script {
+              // Write out each multi-line string parameter into its own file
+              writeFile file: env.k6EnvFile,           text: params.K6_ENV
+              writeFile file: env.harvesterKubeconfig, text: params.HARVESTER_KUBECONFIG
+              writeFile file: env.templateDartFile,    text: params.DART_FILE
+
+              // Dump to verify
+              echo "---- k6.env ----"
+              sh "cat ${env.k6EnvFile}"
+              echo "---- harvester.kubeconfig ----"
+              sh "cat ${env.harvesterKubeconfig}"
+              echo "---- template-dart.yaml ----"
+              sh "cat ${env.templateDartFile}"
+            }
+          }
+        }
+
         stage('Setup SSH Keys') {
           steps {
             script {
@@ -106,31 +129,27 @@ pipeline {
 
         stage('Render Dart file') {
           steps {
-            withFileParameter('DART_FILE') {
-              withFileParameter('HARVESTER_KUBECONFIG'){
-                script {
-                  sh 'cat $DART_FILE'
-                  // 1) Read the raw template file into a String
-                  def rawTemplate = readFile file: $DART_FILE  // readFile step reads workspace files
+            script {
+              sh "cat ${params.DART_FILE}"
+              // 1) Read the raw template file into a String
+              def rawTemplate = readFile file: env.templateDartFile  // readFile step reads workspace files
 
-                  // 2) Build a binding map of all the env vars to be substituted
-                  def binding = [
-                    HARVESTER_KUBECONFIG: $HARVESTER_KUBECONFIG,
-                    SSH_KEY_NAME       : env.SSH_KEY_NAME,
-                  ]
+              // 2) Build a binding map of all the env vars to be substituted
+              def binding = [
+                HARVESTER_KUBECONFIG: env.harvesterKubeconfig,
+                SSH_KEY_NAME        : env.SSH_KEY_NAME,
+              ]
 
-                  // 3) Call the helper render method
-                  echo "RENDERING TEMPLATE:"
-                  def rendered = renderTemplateText(rawTemplate, binding)
+              // 3) Call the helper render method
+              echo "RENDERING TEMPLATE:"
+              def rendered = renderTemplateText(rawTemplate, binding)
 
-                  // 4) Write the fully‐rendered YAML to file
-                  writeFile file: 'rendered-dart.yaml', text: rendered
+              // 4) Write the fully‐rendered YAML to file
+              writeFile file: env.renderedDartFile, text: rendered
 
-                  // sh "envsubst < ${env.DART_FILE} > rendered-dart.yaml"
-                  echo "RENDERED DART:"
-                  sh "cat rendered-dart.yaml"
-                }
-              }
+              // sh "envsubst < ${env.DART_FILE} > rendered-dart.yaml"
+              echo "RENDERED DART:"
+              sh "cat ${env.renderedDartFile}"
             }
           }
         }
@@ -147,7 +166,7 @@ pipeline {
               script {
                 echo 'WORKSPACE:'
                 sh 'ls -al'
-                sh 'dartboard --dart rendered-dart.yaml deploy'
+                sh "dartboard --dart ${env.renderedDartFile} deploy"
               }
             }
         }
@@ -165,16 +184,16 @@ pipeline {
                 // if the user uploaded a K6_ENV file, source it so all its KEY=VALUE lines
                 // become environment variables for the k6 process
                 // `set` docs: https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html
-                if (params.K6_ENV) {
-                  sh '''
+                if (fileExists(env.k6EnvFile)) {
+                  sh """
                     set -o allexport
-                    source "${params.K6_ENV}"
+                    source ${env.k6EnvFile}
                     set +o allexport
-                    k6 run --out json="${params.K6_TEST%.js*}-output.json" ${testsDir}/"${params.K6_TEST}"
-                  '''
+                    k6 run --out json=${params.K6_TEST%.js*}-output.json ${testsDir}/${params.K6_TEST}
+                  """
                 } else {
                   // no env‐file, just run k6 and use any defaults provided in the script itself
-                    sh "k6 run --out json=\"\${K6_TEST%.js*}-output.json\" ${env.testsDir}${params.K6_TEST}"
+                    sh "k6 run --out json=${K6_TEST%.js*}-output.json ${env.testsDir}/${params.K6_TEST}"
                 }
               }
             }
@@ -192,9 +211,8 @@ pipeline {
                 archiveArtifacts artifacts: '**/*.tfstate*, **/*.output.json', fingerprint: true
             }
         }
-
-
     }
+
     post {
       always {
         script {
