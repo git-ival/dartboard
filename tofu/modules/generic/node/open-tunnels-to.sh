@@ -5,6 +5,8 @@
 pkill -f 'ssh .*-o IgnoreUnknown=TofuCreatedThisTunnel.*-L ${tunnel[0]}:localhost:[0-9]+.*'
 %{ endfor ~}
 
+# Timeout block for tunnel creation and checks
+timeout 600 sh <<'EOF'
 # Create tunnels
 nohup ssh -o IgnoreUnknown=TofuCreatedThisTunnel \
   -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
@@ -21,3 +23,9 @@ do
   sleep 1
 done
 %{ endfor }
+EOF
+
+if [ $? -ne 0 ]; then
+  echo "Tunnel setup timed out or failed!"
+  exit 1
+fi
