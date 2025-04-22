@@ -18,7 +18,7 @@ timeout 120 sh <<'EOF'
 set -e
 
 # Create tunnels
-nohup ssh -o IgnoreUnknown=TofuCreatedThisTunnel \
+ssh -o IgnoreUnknown=TofuCreatedThisTunnel \
   -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
   -i ${ssh_private_key_path} \
   -N \
