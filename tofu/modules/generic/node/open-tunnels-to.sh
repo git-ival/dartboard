@@ -1,4 +1,5 @@
 #!/bin/sh
+set -x
 
 # Kill any previously created tunnels
 %{ for tunnel in ssh_tunnels ~}
@@ -16,9 +17,10 @@ while [ $ATTEMPT -le $MAX_RETRIES ]; do
 # Timeout block for tunnel creation and checks
 timeout 120 sh <<'EOF'
 set -e
+set -x
 
 # Create tunnels
-ssh -o IgnoreUnknown=TofuCreatedThisTunnel \
+nohup ssh -o IgnoreUnknown=TofuCreatedThisTunnel \
   -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
   -i ${ssh_private_key_path} \
   -N \
