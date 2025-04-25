@@ -203,7 +203,7 @@ pipeline {
             */
             echo "Archiving Terraform state and K6 test results..."
             // wildcard for any *.tfstate or backup, plus our k6 json output
-            archiveArtifacts artifacts: '**/*.tfstate*, **/*.output.json', '**/*.pem', '**/*.pub', '**/*.yaml', '**/*.sh', '**/*.env', fingerprint: true
+            archiveArtifacts artifacts: '**/*.tfstate*, **/*.output.json **/*.pem **/*.pub **/*.yaml **/*.sh **/*.env', fingerprint: true
             sh "docker image rm ${env.imageName}"
             echo "POST-CLEANUP IMAGES:"
             sh "docker image ls"
