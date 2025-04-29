@@ -115,7 +115,7 @@ pipeline {
             docker {
               image "${env.imageName}:latest"
               reuseNode true
-              args "--entrypoint='/bin/bash' --user 0"
+              args "--entrypoint='' --user 0"
             }
           }
           steps {
