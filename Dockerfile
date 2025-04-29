@@ -19,15 +19,24 @@ RUN cd $WORKSPACE && \
     make && \
     mv ./dartboard /usr/local/bin/dartboard
 
-# Copy bash and its dependencies
+# Copy bash and its dependencies into temp dir
 RUN mkdir -p /bash-layer/bin /bash-layer/lib && \
     cp /bin/bash /bash-layer/bin/ && \
     ldd /bin/bash | awk '{ print $3 }' | grep -v '^(' | xargs -I '{}' cp -v '{}' /bash-layer/lib/
 
 FROM grafana/k6:${K6_VERSION}
 COPY --from=builder /usr/local/bin/dartboard /bin/dartboard
-# Copy bash binary and its dependencies
-COPY --from=builder /bash-layer/bin/bash /bin/bash
-COPY --from=builder /bash-layer/lib /lib
+
+# Run the following commands as root user so that we can easily install some needed tools
+USER root
+
+RUN apk update && \
+    apk add \
+    openssh-client \
+    netcat-openbsd \
+    bash
+
+# switch back to the non-root user
+USER k6
 
 CMD [ "dartboard" ]
