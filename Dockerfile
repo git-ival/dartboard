@@ -26,7 +26,7 @@ COPY --from=builder /usr/local/bin/dartboard /bin/dartboard
 USER root
 
 RUN apk update && \
-    apk add \
+    apk add --no-cache \
     openssh-client \
     netcat-openbsd \
     bash
