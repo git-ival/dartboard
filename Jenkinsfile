@@ -72,6 +72,7 @@ pipeline {
         stage('Configure and Build') {
             steps {
               script {
+                echo "OUTPUTTING ENV FOR MANUAL VERIFICATION:"
                 sh 'printenv'
                 echo "Storing env in file"
                 sh "printenv | egrep '^(ARM_|CATTLE_|ADMIN|USER|DO|RANCHER_|AWS_|DEBUG|LOGLEVEL|DEFAULT_|OS_|DOCKER_|CLOUD_|KUBE|BUILD_NUMBER|AZURE|TEST_|QASE_|SLACK_|harvester|K6_TEST|TF_).*=.+' | sort > ${env.envFile}"
@@ -94,12 +95,11 @@ pipeline {
         stage('Prepare Parameter Files') {
           steps {
             script {
-              // Write out each multi-line string parameter into its own file
               writeFile file: env.k6EnvFile,           text: params.K6_ENV
               writeFile file: env.harvesterKubeconfig, text: params.HARVESTER_KUBECONFIG
               writeFile file: env.templateDartFile,    text: params.DART_FILE
 
-              // Dump to verify
+              echo "DUMPING INPUT FILES FOR MANUAL VERIFICATION"
               echo "---- k6.env ----"
               sh "cat ${env.k6EnvFile}"
               echo "---- harvester.kubeconfig ----"
@@ -122,7 +122,8 @@ pipeline {
 
               sh "echo ${env.SSH_PUB_KEY} > ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
               sh "chmod 644 ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
-              echo "PUB KEY:"
+
+              echo "VERIFICATION FOR PUB KEY:"
               sh "cat ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
             }
           }
