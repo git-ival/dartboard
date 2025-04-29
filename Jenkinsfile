@@ -111,6 +111,13 @@ pipeline {
         }
 
         stage('Setup SSH Keys') {
+          agent {
+            docker {
+              image "${env.imageName}:latest"
+              reuseNode true
+              args "--entrypoint='' --user root --env-file ${WORKSPACE}/${env.envFile}"
+            }
+          }
           steps {
             script {
               echo 'PRE-SHELL WORKSPACE:'
@@ -119,9 +126,11 @@ pipeline {
               // Write the public key string into a .pub file
               sh "echo ${env.SSH_PEM_KEY} | base64 -di > ${WORKSPACE}/${env.SSH_KEY_NAME}.pem"
               sh "chmod 600 ${WORKSPACE}/${env.SSH_KEY_NAME}.pem"
+              sh "chown k6:k6 ${WORKSPACE}/${env.SSH_KEY_NAME}.pem"
 
               sh "echo ${env.SSH_PUB_KEY} > ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
               sh "chmod 644 ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
+              sh "chown k6:k6 ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
 
               echo "VERIFICATION FOR PUB KEY:"
               sh "cat ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
@@ -150,7 +159,7 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
-                args "--entrypoint='' --env-file ${WORKSPACE}/${env.envFile}"
+                args "--entrypoint='/bin/bash' --env-file ${WORKSPACE}/${env.envFile}"
               }
             }
             steps {
@@ -167,7 +176,7 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
-                args "--entrypoint='' --env-file ${WORKSPACE}/${envFile}"
+                args "--entrypoint='/bin/bash' --env-file ${WORKSPACE}/${envFile}"
               }
             }
             steps {
