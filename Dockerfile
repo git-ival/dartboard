@@ -19,11 +19,6 @@ RUN cd $WORKSPACE && \
     make && \
     mv ./dartboard /usr/local/bin/dartboard
 
-# Copy bash and its dependencies into temp dir
-RUN mkdir -p /bash-layer/bin /bash-layer/lib && \
-    cp /bin/bash /bash-layer/bin/ && \
-    ldd /bin/bash | awk '{ print $3 }' | grep -v '^(' | xargs -I '{}' cp -v '{}' /bash-layer/lib/
-
 FROM grafana/k6:${K6_VERSION}
 COPY --from=builder /usr/local/bin/dartboard /bin/dartboard
 
