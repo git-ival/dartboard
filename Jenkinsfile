@@ -159,7 +159,7 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
-                args "--entrypoint='/bin/bash' --env-file ${WORKSPACE}/${env.envFile}"
+                args "--entrypoint='' --user k6 --env-file ${WORKSPACE}/${env.envFile}"
               }
             }
             steps {
@@ -176,7 +176,7 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
-                args "--entrypoint='/bin/bash' --env-file ${WORKSPACE}/${envFile}"
+                args "--entrypoint='' --user k6 --env-file ${WORKSPACE}/${envFile}"
               }
             }
             steps {
