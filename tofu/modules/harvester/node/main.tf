@@ -7,9 +7,11 @@ terraform {
 }
 
 resource "harvester_virtualmachine" "this" {
-  name      = "${var.project_name}-${var.name}"
-  namespace = var.network_config.namespace
-  hostname  = var.name
+  name                 = "${var.project_name}-${var.name}"
+  namespace            = var.network_config.namespace
+  hostname             = var.name
+  restart_after_update = false
+  run_strategy         = "RerunOnFailure"
 
   tags = merge({
     ssh-user = var.ssh_user
@@ -23,8 +25,8 @@ resource "harvester_virtualmachine" "this" {
   secure_boot = coalesce(var.node_module_variables.efi, false) ? coalesce(var.node_module_variables.secure_boot, false) : false
 
   network_interface {
-    name = var.network_config.name
-    network_name = var.network_config.id
+    name           = var.network_config.name
+    network_name   = var.network_config.id
     type           = var.network_config.interface_type
     model          = var.network_config.interface_model
     wait_for_lease = var.network_config.wait_for_lease
@@ -33,14 +35,14 @@ resource "harvester_virtualmachine" "this" {
   dynamic "disk" {
     for_each = local.disks_map
     content {
-      name       = disk.value.name
-      type       = disk.value.type
-      size       = "${disk.value.size}Gi"
-      bus        = disk.value.bus
-      image      = index(var.node_module_variables.disks, disk.value) == 0 ? (
+      name = disk.value.name
+      type = disk.value.type
+      size = "${disk.value.size}Gi"
+      bus  = disk.value.bus
+      image = index(var.node_module_variables.disks, disk.value) == 0 ? (
         var.node_module_variables.image_name != null && var.node_module_variables.image_namespace != null ? data.harvester_image.this[0].id : var.image_id
       ) : null
-      boot_order = index(var.node_module_variables.disks, disk.value) + 1 //boot_order starts at 1, while the index() function is 0-based
+      boot_order  = index(var.node_module_variables.disks, disk.value) + 1 //boot_order starts at 1, while the index() function is 0-based
       auto_delete = true
     }
   }
@@ -56,6 +58,7 @@ resource "harvester_virtualmachine" "this" {
 
   cloudinit {
     user_data = local.template_user_data
+    type      = "noCloud"
   }
 
   // Allow for more than the default time for VM destruction
