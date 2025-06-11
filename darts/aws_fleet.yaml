@@ -1,7 +1,7 @@
 # Deploys clusters and prepares them for performance tests
 
 tofu_main_directory: ./tofu/main/aws
-tofu_parallelism: 10
+tofu_parallelism: 100
 
 tofu_variables:
   project_name: fleet-standalone
@@ -49,7 +49,7 @@ tofu_variables:
       reserve_node_for_monitoring: false
       enable_audit_log: false
       node_module_variables:
-        instance_type: t4g.large
+        instance_type: t4g.medium
         ami: ami-04effc0585c8f1e3e # openSUSE-Leap-15-6-v20250408-hvm-ssd-arm64-a516e959-df54-4035-bb1a-63599b7a6df9
         root_volume_size_gb: 50
   downstream_cluster_distro_module: generic/k3s
