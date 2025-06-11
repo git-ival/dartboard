@@ -44,6 +44,18 @@ resource "null_resource" "host_configuration" {
     ]
   }
 
+  # not possible to limit this to bastion host
+  provisioner "file" {
+    source      = "${path.module}/sshd_max-startups.conf"
+    destination = "/etc/ssh/sshd_config.d/90-max-startups.conf"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "systemctl reload sshd",
+    ]
+  }
+
   provisioner "remote-exec" {
     inline = var.host_configuration_commands
   }
