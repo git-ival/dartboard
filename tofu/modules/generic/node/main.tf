@@ -42,13 +42,13 @@ resource "local_file" "open_tunnels" {
   filename = "${path.root}/${terraform.workspace}_config/open-tunnels-to-${var.name}.sh"
 }
 
-resource "null_resource" "open_tunnels" {
-  count = length(var.ssh_tunnels) > 0 ? 1 : 0
-  provisioner "local-exec" {
-    interpreter = ["bash", "-c"]
-    command     = local_file.open_tunnels[0].filename
-  }
-  triggers = {
-    always_run = timestamp()
-  }
-}
+# resource "null_resource" "open_tunnels" {
+#   count = length(var.ssh_tunnels) > 0 ? 1 : 0
+#   provisioner "local-exec" {
+#     interpreter = ["bash", "-c"]
+#     command     = local_file.open_tunnels[0].filename
+#   }
+#   triggers = {
+#     always_run = timestamp()
+#   }
+# }
