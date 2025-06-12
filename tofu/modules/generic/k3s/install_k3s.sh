@@ -66,6 +66,13 @@ kind: KubeletConfiguration
 maxPods: ${max_pods}
 EOF
 
+cat > /etc/rancher/k3s/registries.yaml <<EOF
+mirrors:
+  registry-1.docker.io:
+    endpoint:
+      - "http://${registry_mirror}:5000"
+EOF
+
 # installation
 export INSTALL_K3S_VERSION=${distro_version}
 export INSTALL_K3S_EXEC=${exec}
