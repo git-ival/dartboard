@@ -1,8 +1,8 @@
 locals {
-  downstream_clusters = flatten([
-    for i, template in var.downstream_cluster_templates : [
-      for j in range(template.cluster_count) : merge(template, { name = "downstream-${i}-${j}" })
-  ] if template.cluster_count > 0])
+  # downstream_clusters = flatten([
+  #   for i, template in var.downstream_cluster_templates : [
+  #     for j in range(template.cluster_count) : merge(template, { name = "downstream-${i}-${j}" })
+  # ] if template.cluster_count > 0])
   standalone_nodes = flatten([
     for i, template in var.standalone_node_templates : [
       for j in range(template.node_count) : merge(template, { name = "${template.name}-${i}-${j}" })
@@ -56,17 +56,18 @@ module "tester_cluster" {
 
 
 module "downstream_clusters" {
-  count                       = length(local.downstream_clusters)
+  #count                       = length(local.downstream_clusters)
+  count                       = var.downstream_cluster_templates[0].cluster_count
   source                      = "../../${var.downstream_cluster_distro_module}"
   project_name                = var.project_name
-  name                        = local.downstream_clusters[count.index].name
-  server_count                = local.downstream_clusters[count.index].server_count
-  agent_count                 = local.downstream_clusters[count.index].agent_count
-  distro_version              = local.downstream_clusters[count.index].distro_version
-  reserve_node_for_monitoring = local.downstream_clusters[count.index].reserve_node_for_monitoring
-  enable_audit_log            = local.downstream_clusters[count.index].enable_audit_log
+  name                        = "downstream-0-${count.index}"
+  server_count                = var.downstream_cluster_templates[0].server_count
+  agent_count                 = var.downstream_cluster_templates[0].agent_count
+  distro_version              = var.downstream_cluster_templates[0].distro_version
+  reserve_node_for_monitoring = var.downstream_cluster_templates[0].reserve_node_for_monitoring
+  enable_audit_log            = var.downstream_cluster_templates[0].enable_audit_log
 
-  sans                      = ["${local.downstream_clusters[count.index].name}.local.gd"]
+  sans                      = ["${count.index}.local.gd"]
   local_kubernetes_api_port = var.first_kubernetes_api_port + 2 + count.index
   tunnel_app_http_port      = var.first_app_http_port + 2 + count.index
   tunnel_app_https_port     = var.first_app_https_port + 2 + count.index
@@ -75,7 +76,7 @@ module "downstream_clusters" {
   node_module               = var.node_module
   network_config            = var.network_config
   image_id                  = var.image_id
-  node_module_variables     = local.downstream_clusters[count.index].node_module_variables
+  node_module_variables     = var.downstream_cluster_templates[0].node_module_variables
 }
 
 module "standalone_nodes" {
