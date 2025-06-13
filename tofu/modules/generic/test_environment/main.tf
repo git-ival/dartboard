@@ -67,6 +67,7 @@ module "downstream_clusters" {
   reserve_node_for_monitoring = var.downstream_cluster_templates[0].reserve_node_for_monitoring
   enable_audit_log            = var.downstream_cluster_templates[0].enable_audit_log
 
+  #sans                      = ["downstream-0-${count.index}.local.gd"]
   sans                      = ["${count.index}.local.gd"]
   local_kubernetes_api_port = var.first_kubernetes_api_port + 2 + count.index
   tunnel_app_http_port      = var.first_app_http_port + 2 + count.index
