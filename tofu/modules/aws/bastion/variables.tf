@@ -68,7 +68,5 @@ variable "network_config" {
     public_security_group_id : string,
     private_security_group_id : string,
     ssh_key_name : string,
-    ssh_bastion_host : string,
-    ssh_bastion_user : string,
   })
 }

@@ -263,7 +263,5 @@ module "bastion" {
     public_security_group_id : aws_security_group.public.id
     private_security_group_id : aws_security_group.private.id
     ssh_key_name : aws_key_pair.key_pair.key_name
-    ssh_bastion_host : null,
-    ssh_bastion_user : null,
   }
 }

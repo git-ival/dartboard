@@ -22,12 +22,10 @@ resource "null_resource" "host_configuration" {
   depends_on = [aws_instance.instance]
 
   connection {
-    host        = var.network_config.ssh_bastion_host == null ? aws_instance.instance.public_dns : aws_instance.instance.private_dns
+    host        = aws_instance.instance.public_dns
     private_key = file(var.ssh_private_key_path)
     user        = var.ssh_user
 
-    bastion_host        = var.network_config.ssh_bastion_host
-    bastion_user        = var.network_config.ssh_bastion_user
     bastion_private_key = file(var.ssh_private_key_path)
     timeout             = "240s"
     agent       = "false"
@@ -68,3 +66,16 @@ resource "null_resource" "host_configuration" {
     inline = var.host_configuration_commands
   }
 }
+
+resource "local_file" "ssh_script" {
+  content = <<-EOT
+    #!/bin/sh
+    ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=/dev/null" \
+      -i ${var.ssh_private_key_path} \
+      ${var.ssh_user}@${aws_instance.instance.public_dns} \
+      $@
+  EOT
+
+  filename = "${path.root}/${terraform.workspace}_config/ssh-to-${var.name}.sh"
+}
+
