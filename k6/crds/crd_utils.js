@@ -27,26 +27,11 @@ export function cleanupMatchingCRDs(baseUrl, cookies, namePrefix) {
   })
 }
 
-export function sizeOfHeaders(hdrs) {
-  return Object.keys(hdrs).reduce((sum, key) => sum + key.length + hdrs[key].length, 0);
-}
-
-export function trackDataMetricsPerURL(res, tags, headerDataRecv, epDataRecv) {
-  // Add data points for received data
-  headerDataRecv.add(sizeOfHeaders(res.headers));
-  if (res.hasOwnProperty('body') && res.body) {
-    epDataRecv.add(res.body.length, tags);
-  } else {
-    epDataRecv.add(0, tags)
-  }
-}
-
 export function getCRD(baseUrl, cookies, id) {
   let res = http.get(`${baseUrl}/${baseCRDPath}/${id}`, { cookies: cookies, tag: crdTag })
   let criteria = []
   criteria[`GET /${baseCRDPath}/<CRD ID> returns status 200`] = (r) => r.status === 200
   check(res, criteria)
-  // console.log(`GET CRD status: ${res.status}`)
   return res
 }
 
@@ -134,10 +119,6 @@ export function getCRDsMatchingNameVersions(baseUrl, cookies, namePrefix, numVer
   let crdArray = JSON.parse(res.body)["data"]
   crdArray = crdArray.filter(r => r["metadata"]["name"].startsWith(namePrefix) && r["spec"]["versions"].length == numVersions)
   return crdArray
-}
-
-export function teardown(data) {
-  cleanup(data.cookies)
 }
 
 export function updateCRD(baseUrl, cookies, crd) {

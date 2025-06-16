@@ -4,6 +4,7 @@ import { Trend } from 'k6/metrics';
 import { getCookies, login } from "../rancher/rancher_utils.js";
 import { vu as metaVU } from 'k6/execution'
 import * as crdUtil from "./crd_utils.js";
+import * as k6Util from "../generic/k6_utils.js";
 import * as k8s from '../generic/k8s.js'
 
 
@@ -120,7 +121,7 @@ export function checkAndBuildCRDArray(cookies, crdArray) {
     for (let i = 0; i < crdCount; i++) {
       let crdSuffix = `${i}`
       let res = crdUtil.createCRD(baseUrl, cookies, crdSuffix)
-      crdUtil.trackDataMetricsPerURL(res, crdUtil.crdsTag, headerDataRecv, epDataRecv)
+      k6Util.trackDataMetricsPerURL(res, crdUtil.crdsTag, headerDataRecv, epDataRecv)
       sleep(0.25)
     }
     let { res: res, crdArray: crds } = crdUtil.getCRDsMatchingName(baseUrl, cookies, namePrefix)
@@ -141,7 +142,7 @@ export function updateCRDs(data) {
     }
     let res = crdUtil.getCRD(baseUrl, data.cookies, c.id)
     let modifyCRD = JSON.parse(res.body)
-    crdUtil.trackDataMetricsPerURL(res, crdUtil.crdTag, headerDataRecv, epDataRecv)
+    k6Util.trackDataMetricsPerURL(res, crdUtil.crdTag, headerDataRecv, epDataRecv)
 
     modifyCRD.spec.versions[2] = newSchema
     // Unset previously stored version
@@ -151,7 +152,7 @@ export function updateCRDs(data) {
     }
 
     res = crdUtil.updateCRD(baseUrl, data.cookies, modifyCRD)
-    crdUtil.trackDataMetricsPerURL(res, crdUtil.putCRDTag, headerDataRecv, epDataRecv)
+    k6Util.trackDataMetricsPerURL(res, crdUtil.putCRDTag, headerDataRecv, epDataRecv)
     sleep(0.25)
   })
   sleep(0.15)
@@ -175,7 +176,7 @@ function updateStorageVersion(data, updatedIDs) {
   updatedIDs.forEach(id => {
     let res = crdUtil.getCRD(baseUrl, data.cookies, id)
     let modifyCRD = JSON.parse(res.body)
-    crdUtil.trackDataMetricsPerURL(res, crdUtil.crdTag, headerDataRecv, epDataRecv)
+    k6Util.trackDataMetricsPerURL(res, crdUtil.crdTag, headerDataRecv, epDataRecv)
     // Unset previously stored version
     if (modifyCRD && 'spec' in modifyCRD && 'versions' in modifyCRD) {
       modifyCRD.spec.versions[1].storage = false
@@ -203,7 +204,7 @@ function destructiveUpdate(data, updatedIDs) {
   updatedIDs.forEach(id => {
     let res = crdUtil.getCRD(baseUrl, data.cookies, id)
     let modifyCRD = JSON.parse(res.body)
-    crdUtil.trackDataMetricsPerURL(res, crdUtil.crdTag, headerDataRecv, epDataRecv)
+    k6Util.trackDataMetricsPerURL(res, crdUtil.crdTag, headerDataRecv, epDataRecv)
     // Unset newly added stored version
     modifyCRD.spec.versions[2].storage = false
     modifyCRD.spec.versions[2].served = false
@@ -211,7 +212,7 @@ function destructiveUpdate(data, updatedIDs) {
     modifyCRD.spec.versions[1].served = true
 
     res = crdUtil.updateCRD(baseUrl, data.cookies, modifyCRD)
-    crdUtil.trackDataMetricsPerURL(res, crdUtil.putCRDTag, headerDataRecv, epDataRecv)
+    k6Util.trackDataMetricsPerURL(res, crdUtil.putCRDTag, headerDataRecv, epDataRecv)
     sleep(0.25)
   })
   let { res: res, timeSpent: _ } = crdUtil.getCRDsMatchingName(baseUrl, data.cookies, namePrefix)
@@ -245,10 +246,10 @@ function destructiveUpdate(data, updatedIDs) {
       let k8sRes = k8s.patch(`${baseUrl}/apis/apiextensions.k8s.io/v1/customresourcedefinitions/${r.id}/status`, storedVersions, patchParams)
       let res = crdUtil.getCRD(baseUrl, data.cookies, r.id)
       let modifyCRD = JSON.parse(res.body)
-      crdUtil.trackDataMetricsPerURL(res, crdUtil.crdTag, headerDataRecv, epDataRecv)
+      k6Util.trackDataMetricsPerURL(res, crdUtil.crdTag, headerDataRecv, epDataRecv)
       modifyCRD.spec.versions.splice(2, 1)
       res = crdUtil.updateCRD(baseUrl, data.cookies, modifyCRD)
-      crdUtil.trackDataMetricsPerURL(res, crdUtil.putCRDTag, headerDataRecv, epDataRecv)
+      k6Util.trackDataMetricsPerURL(res, crdUtil.putCRDTag, headerDataRecv, epDataRecv)
       sleep(0.25)
     });
   ({ res: verifyRes, timeSpent: timeSpent } = crdUtil.verifyCRDs(baseUrl, data.cookies, namePrefix, crdCount, crdUtil.crdRefreshDelayMs * 5))

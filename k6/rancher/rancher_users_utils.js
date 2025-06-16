@@ -6,7 +6,7 @@ export function getUserId(baseUrl, cookies) {
       headers: {
           accept: 'application/json',
       },
-      cookies: {cookies},
+      cookies: cookies,
   })
   check(response, {
       'reading user details was successful': (r) => r.status === 200,
@@ -23,7 +23,7 @@ export function getUserPreferences(baseUrl, cookies) {
       headers: {
           accept: 'application/json',
       },
-      cookies: {cookies},
+      cookies: cookies,
   })
   check(response, {
       'preferences can be queried': (r) => r.status === 200,
@@ -40,7 +40,7 @@ export function setUserPreferences(baseUrl, cookies, userId, userPreferences) {
               accept: 'application/json',
               'content-type': 'application/json',
           },
-          cookies: {cookies},
+          cookies: cookies,
       }
   )
   check(response, {
