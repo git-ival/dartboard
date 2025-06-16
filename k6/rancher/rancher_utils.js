@@ -18,7 +18,7 @@ export function login(baseUrl, cookies, username, password) {
         accept: 'application/json',
         'content-type': 'application/json; charset=UTF-8',
       },
-      cookies: { cookies },
+      cookies: cookies,
     }
   )
   console.log("POST login: ", response.status);
@@ -42,7 +42,7 @@ export function firstLogin(baseUrl, cookies, bootstrapPassword, password) {
           accept: 'application/json',
           'content-type': 'application/json; charset=UTF-8',
         },
-        cookies: { cookies },
+        cookies: cookies,
       }
     )
     check(response, {
@@ -70,7 +70,7 @@ export function firstLogin(baseUrl, cookies, bootstrapPassword, password) {
       headers: {
         accept: 'application/json',
       },
-      cookies: { cookies },
+      cookies: cookies,
     }
   )
   check(response, {
@@ -88,7 +88,7 @@ export function firstLogin(baseUrl, cookies, bootstrapPassword, password) {
           accept: 'application/json',
           'content-type': 'application/json',
         },
-        cookies: { cookies },
+        cookies: cookies,
       }
     )
     check(response, {
@@ -105,7 +105,7 @@ export function firstLogin(baseUrl, cookies, bootstrapPassword, password) {
           accept: 'application/json',
           'content-type': 'application/json',
         },
-        cookies: { cookies },
+        cookies: cookies,
       }
     )
     check(response, {
@@ -123,7 +123,7 @@ export function firstLogin(baseUrl, cookies, bootstrapPassword, password) {
           accept: 'application/json',
           'content-type': 'application/json',
         },
-        cookies: { cookies },
+        cookies: cookies,
       }
     )
     check(response, {
@@ -140,7 +140,7 @@ export function firstLogin(baseUrl, cookies, bootstrapPassword, password) {
           accept: 'application/json',
           'content-type': 'application/json',
         },
-        cookies: { cookies },
+        cookies: cookies,
       }
     )
     check(response, {
@@ -158,7 +158,7 @@ export function firstLogin(baseUrl, cookies, bootstrapPassword, password) {
           accept: 'application/json',
           'content-type': 'application/json',
         },
-        cookies: { cookies },
+        cookies: cookies,
       }
     )
     check(response, {
@@ -175,7 +175,7 @@ export function firstLogin(baseUrl, cookies, bootstrapPassword, password) {
           accept: 'application/json',
           'content-type': 'application/json',
         },
-        cookies: { cookies },
+        cookies: cookies,
       }
     )
     check(response, {
@@ -404,6 +404,19 @@ export function retryOnConflict(f) {
       return res
     }
     // expected conflict. Sleep a bit and retry
+    sleep(Math.random())
+  }
+  // all previous attempts failed, try one last time
+  return f()
+}
+
+export function retryUntilExpected(f, expectedStatus) {
+  for (let i = 0; i < 9; i++) {
+    const res = f()
+    if (res.status === expectedStatus) {
+      return res
+    }
+    // status doesn't match expected. Sleep a bit and retry
     sleep(Math.random())
   }
   // all previous attempts failed, try one last time
