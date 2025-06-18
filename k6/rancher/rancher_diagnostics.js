@@ -1,17 +1,47 @@
 import { check, fail, sleep } from 'k6'
+import { Trend, Gauge } from 'k6/metrics';
 import http from 'k6/http'
+
+// Resource count tracking metrics (using Gauges since they represent current state)
+export const totalProjectsGauge = new Gauge('cluster_projects_total')
+export const totalNamespacesGauge = new Gauge('cluster_namespaces_total')
+export const totalPodsGauge = new Gauge('cluster_pods_total')
+export const totalSecretsGauge = new Gauge('cluster_secrets_total')
+export const totalConfigMapsGauge = new Gauge('cluster_configmaps_total')
+export const totalServiceAccountsGauge = new Gauge('cluster_serviceaccounts_total')
+export const totalClusterRolesGauge = new Gauge('cluster_clusterroles_total')
+export const totalCRDsGauge = new Gauge('cluster_crds_total')
+
+// API response time tracking metrics
+export const systemImageAPITime = new Trend('api_systemimage_duration')
+export const eventAPITime = new Trend('api_event_duration')
+export const k8sEventAPITime = new Trend('api_k8sevent_duration')
+export const settingsAPITime = new Trend('api_settings_duration')
+export const clusterRoleAPITime = new Trend('api_clusterrole_duration')
+export const crdAPITime = new Trend('api_crd_duration')
+export const clusterRoleBindingAPITime = new Trend('api_clusterrolebinding_duration')
+export const rkeAddonAPITime = new Trend('api_rkeaddon_duration')
+export const configMapAPITime = new Trend('api_configmap_duration')
+export const serviceAccountAPITime = new Trend('api_serviceaccount_duration')
+export const secretAPITime = new Trend('api_secret_duration')
+export const podAPITime = new Trend('api_pod_duration')
+export const rkeServiceOptionAPITime = new Trend('api_rkeserviceoption_duration')
+export const apiServiceAPITime = new Trend('api_apiservice_duration')
+export const roleTemplateAPITime = new Trend('api_roletemplate_duration')
+export const projectAPITime = new Trend('api_project_duration')
+export const namespaceAPITime = new Trend('api_namespace_duration')
 
 export const timingTag = { timing: "yes" }
 
 export function getLocalClusterResourceCounts(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/counts`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
   })
   check(response, {
-      'k8s/clusters/local/v1/counts can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/counts can be queried': (r) => r.status === 200,
   })
   return JSON.parse(response.body)["data"][0]["counts"]
 }
@@ -56,210 +86,238 @@ export function processResourceCounts(resourceCountObj) {
 
 export function getLocalClusterSystemImageTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/management.cattle.io.rkek8ssystemimage`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/management.cattle.io.rkek8ssystemimage can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/management.cattle.io.rkek8ssystemimage can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterEventTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/event`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/event can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/event can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterK8sEventTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/events.k8s.io.event`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/events.k8s.io.event can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/events.k8s.io.event can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterSettingsTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/management.cattle.io.setting`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/management.cattle.io.setting can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/management.cattle.io.setting can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterClusterRoleTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/rbac.authorization.k8s.io.clusterrole`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/rbac.authorization.k8s.io.clusterrole can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/rbac.authorization.k8s.io.clusterrole can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterCRDTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/apiextensions.k8s.io.customresourcedefinition`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/apiextensions.k8s.io.customresourcedefinition can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/apiextensions.k8s.io.customresourcedefinition can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterClusterRoleBindingTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/rbac.authorization.k8s.io.clusterrolebinding`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/rbac.authorization.k8s.io.clusterrolebinding can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/rbac.authorization.k8s.io.clusterrolebinding can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterRKEAddonTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/management.cattle.io.rkeaddon`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/management.cattle.io.rkeaddon can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/management.cattle.io.rkeaddon can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterConfigMapTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/configmap`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/configmap can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/configmap can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterServiceAccountTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/serviceaccount`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/serviceaccount can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/serviceaccount can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterSecretTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/secret`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/secret can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/secret can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterPodTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/pod`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/pod can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/pod can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterRKEK8sServiceOptionTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/management.cattle.io.rkek8sserviceoption`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/management.cattle.io.rkek8sserviceoption can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/management.cattle.io.rkek8sserviceoption can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterAPIServiceTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/apiregistration.k8s.io.apiservice`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/apiregistration.k8s.io.apiservice can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/apiregistration.k8s.io.apiservice can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
 
 export function getLocalClusterRoleTemplateTiming(baseUrl, cookies) {
   let response = http.get(`${baseUrl}/k8s/clusters/local/v1/management.cattle.io.roletemplate`, {
-      headers: {
-          accept: 'application/json',
-      },
-      cookies: cookies,
-      tags: timingTag
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
   })
   check(response, {
-      'k8s/clusters/local/v1/management.cattle.io.roletemplate can be queried': (r) => r.status === 200,
+    'k8s/clusters/local/v1/management.cattle.io.roletemplate can be queried': (r) => r.status === 200,
+  })
+  return response.timings
+}
+
+export function getLocalClusterProjectsTiming(baseUrl, cookies) {
+  let response = http.get(`${baseUrl}/k8s/clusters/local/v1/management.cattle.io.projects`, {
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
+  })
+  check(response, {
+    'k8s/clusters/local/v1/management.cattle.io.projects can be queried': (r) => r.status === 200,
+  })
+  return response.timings
+}
+
+export function getLocalClusterNamespacesTiming(baseUrl, cookies) {
+  let response = http.get(`${baseUrl}/k8s/clusters/local/v1/namespaces`, {
+    headers: {
+      accept: 'application/json',
+    },
+    cookies: cookies,
+    tags: timingTag
+  })
+  check(response, {
+    'k8s/clusters/local/v1/namespaces can be queried': (r) => r.status === 200,
   })
   return response.timings
 }
@@ -342,6 +400,16 @@ export function processResourceTimings(baseUrl, cookies) {
     let roleTemplateTiming = getLocalClusterRoleTemplateTiming(baseUrl, cookies)
     if (roleTemplateTiming && roleTemplateTiming.duration) {
       timingsArr["management.cattle.io.roletemplate"] = roleTemplateTiming.duration
+    }
+
+    let projectsTiming = getLocalClusterProjectsTiming(baseUrl, cookies)
+    if (projectsTiming && projectsTiming.duration) {
+      timingsArr["management.cattle.io.project"] = projectsTiming.duration
+    }
+
+    let namespacesTiming = getLocalClusterNamespacesTiming(baseUrl, cookies)
+    if (namespacesTiming && namespacesTiming.duration) {
+      timingsArr["namespace"] = namespacesTiming.duration
     }
 
   } catch (error) {
