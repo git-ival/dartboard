@@ -51,6 +51,17 @@ resource "null_resource" "host_configuration" {
     destination = "/etc/ssh/sshd_config.d/90-max-startups.conf"
   }
 
+  provisioner "file" {
+    source      = "${path.module}/user-slice.conf"
+    destination = "/usr/lib/systemd/system/user-.slice.d/10-defaults.conf"
+  }
+
+
+  provisioner "file" {
+    source      = "${path.module}/logind.conf"
+    destination = "/etc/systemd/logind.conf.d/override.conf"
+  }
+
   provisioner "remote-exec" {
     inline = [
       "chmod +x /tmp/mount_ephemeral.sh",

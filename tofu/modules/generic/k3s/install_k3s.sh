@@ -68,7 +68,7 @@ EOF
 
 cat > /etc/rancher/k3s/registries.yaml <<EOF
 mirrors:
-  registry-1.docker.io:
+  docker.io:
     endpoint:
       - "http://${registry_mirror}:5000"
 EOF
