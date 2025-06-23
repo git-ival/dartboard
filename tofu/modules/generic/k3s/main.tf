@@ -15,8 +15,6 @@ module "server_nodes" {
   ssh_user             = var.ssh_user
   ssh_tunnels = count.index == 0 ? [
     [var.local_kubernetes_api_port, 6443],
-    [var.tunnel_app_http_port, 80],
-    [var.tunnel_app_https_port, 443],
   ] : []
   node_module           = var.node_module
   node_module_variables = var.node_module_variables
