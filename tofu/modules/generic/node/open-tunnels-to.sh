@@ -16,7 +16,7 @@ nohup ssh -o IgnoreUnknown=TofuCreatedThisTunnel \
 
 %{ for tunnel in ssh_tunnels }
 echo "Waiting for tunnel ${tunnel[0]} to be up..."
-while ! nc -zv localhost ${tunnel[0]}
+while ! nc -zv localhost ${tunnel[0]} &> /dev/null
 do
   sleep 1
 done
