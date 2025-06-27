@@ -72,7 +72,8 @@ tls-san:
 %{ for san in sans ~}
   - ${jsonencode(san)}
 %{ endfor ~}
-kubelet-arg: "config=/etc/rancher/rke2/kubelet-custom.config"
+kubelet-arg:
+- "--config=/etc/rancher/rke2/kubelet-custom.config"
 kube-controller-manager-arg: "node-cidr-mask-size=${node_cidr_mask_size}"
 %{ if datastore_endpoint != null ~}
 datastore-endpoint: "${datastore_endpoint}"
