@@ -75,7 +75,7 @@ variable "max_pods" {
 variable "node_cidr_mask_size" {
   description = "Size of the CIDR mask for nodes. Increase when increasing max_pods so that 2^(32-node_cidr_max_size) > 2 * max_pods"
   type        = number
-  default     = 24
+  default     = 22
 }
 
 variable "datastore_endpoint" {
