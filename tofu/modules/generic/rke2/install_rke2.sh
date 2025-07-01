@@ -79,6 +79,8 @@ kube-controller-manager-arg: "node-cidr-mask-size=${node_cidr_mask_size}"
 datastore-endpoint: "${datastore_endpoint}"
 %{ endif ~}
 system-default-registry: registry.rancher.com
+etcd-arg:
+  - "quota-backend-bytes=8589934592"
 EOF
 
 cat > /etc/rancher/rke2/kubelet-custom.config <<EOF
