@@ -94,6 +94,11 @@ variable "datastore_endpoint" {
   default     = null
 }
 
+variable "public" {
+  description = "Whether the node is publicly accessible"
+  default     = false
+}
+
 variable "node_module" {
   description = "Non-generic module to create nodes"
   type        = string

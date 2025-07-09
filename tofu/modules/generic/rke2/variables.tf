@@ -89,6 +89,11 @@ variable "enable_audit_log" {
   default     = false
 }
 
+variable "public" {
+  description = "Whether the node is publicly accessible"
+  default     = false
+}
+
 variable "node_module" {
   description = "Non-generic module to create nodes"
   type        = string
