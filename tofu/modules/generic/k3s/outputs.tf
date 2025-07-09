@@ -29,7 +29,7 @@ output "config" {
         name       = "${var.name}.local.gd"
         http_port  = var.tunnel_app_http_port
         https_port = var.tunnel_app_https_port
-      } : {}
+      } : null
     }
 
     node_access_commands = merge({
