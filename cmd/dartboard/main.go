@@ -65,6 +65,12 @@ func main() {
 				Action:      subcommands.Load,
 			},
 			{
+				Name:        "test",
+				Usage:       "Runs a test on the upstream cluster",
+				Description: "Runs a given test using the given env vars on the upstream cluster",
+				Action:      subcommands.Test,
+			},
+			{
 				Name:        "get-access",
 				Usage:       "Retrieves information to access the deployed clusters",
 				Description: "print out links and access information for the deployed clusters",
