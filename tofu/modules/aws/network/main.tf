@@ -36,6 +36,17 @@ data "http" "myip" {
   }
 }
 
+data "http" "myip" {
+  url = "https://ipv4.icanhazip.com"
+
+  lifecycle {
+    postcondition {
+      condition     = contains([200], self.status_code)
+      error_message = "Status code invalid"
+    }
+  }
+}
+
 resource "aws_internet_gateway" "main" {
   count  = local.create_vpc ? 1 : 0
   vpc_id = local.vpc_id
