@@ -76,6 +76,8 @@ kubelet-arg:
 - "--config=/etc/rancher/rke2/kubelet-custom.config"
 kube-controller-manager-arg: "node-cidr-mask-size=${node_cidr_mask_size}"
 system-default-registry: registry.rancher.com
+etcd-arg:
+  - "quota-backend-bytes=8589934592"
 EOF
 
 cat > /etc/rancher/rke2/kubelet-custom.config <<EOF
@@ -145,4 +147,3 @@ fi
 
 systemctl enable rke2-${type}.service
 systemctl restart rke2-${type}.service
-

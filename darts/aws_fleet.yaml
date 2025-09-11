@@ -1,0 +1,88 @@
+# Deploys clusters and prepares them for performance tests
+
+tofu_main_directory: ./tofu/main/aws
+tofu_parallelism: 20
+
+tofu_variables:
+  project_name: fleet-standalone
+  region: us-east-1
+  availability_zone: us-east-1a
+  aws_profile: AWSPowerUserAccess-NUMBER
+  ssh_public_key_path: ~/.ssh/fleetscale.pub
+  ssh_private_key_path: ~/.ssh/fleetscale
+  ssh_user: root
+  ssh_bastion_user: root
+  ssh_prefix_list: public
+  bastion_host_ami: ami-04effc0585c8f1e3e # openSUSE-Leap-15-6-v20250408-hvm-ssd-arm64-a516e959-df54-4035-bb1a-63599b7a6df9
+
+  upstream_cluster:
+    server_count: 3
+    agent_count: 1
+    distro_version: v1.33.4+rke2r1
+    public_ip: false
+    reserve_node_for_monitoring: false
+    enable_audit_log: false
+    create_tunnels: true
+    node_module_variables:
+      # fleet and api server need CPU and etcd needs nvme
+      instance_type: c5d.12xlarge
+      ami: ami-02889b173d15868e5 # openSUSE-Leap-15-6-v20250408-hvm-ssd-x86_64-5535c495-72d4-4355-b169-54ffa874f849
+      root_volume_size_gb: 20
+    postgres_node_variables: { }
+    etcd_node_variables:
+      instance_type: m6id.4xlarge
+      ami: ami-085386e29e44dacd7 # Amazon Linux 2 Kernel 5.10 AMI 2.0.20250428.0 x86_64 HVM gp2
+      root_volume_size_gb: 50
+  upstream_cluster_distro_module: generic/rke2
+
+  # tester_cluster:
+  #   server_count: 0
+  #   agent_count: 0
+  #   distro_version: v1.33.1+k3s1
+  #   public_ip: false
+  #   reserve_node_for_monitoring: false
+  #   enable_audit_log: false
+  #   node_module_variables:
+  #     instance_type: t3a.large
+  #     ami: ami-02889b173d15868e5 # openSUSE-Leap-15-6-v20250408-hvm-ssd-x86_64-5535c495-72d4-4355-b169-54ffa874f849
+  #     root_volume_size_gb: 50
+  # tester_cluster_distro_module: generic/k3s
+
+  downstream_cluster_templates:
+    - cluster_count: 1
+      server_count: 3
+      agent_count: 6
+      distro_version: v1.33.4+rke2r1
+      public_ip: false
+      reserve_node_for_monitoring: false
+      enable_audit_log: false
+      create_tunnels: true
+      node_module_variables:
+        # k3k controller needs cpu
+        instance_type: c5d.9xlarge
+        ami: ami-02889b173d15868e5 # openSUSE-Leap-15-6-v20250408-hvm-ssd-x86_64-5535c495-72d4-4355-b169-54ffa874f849
+        root_volume_size_gb: 20
+      agent_node_module_variables:
+        # k3k nodes need ram
+        instance_type: r6gd.8xlarge
+        ami: ami-04effc0585c8f1e3e # openSUSE-Leap-15-6-v20250408-hvm-ssd-arm64-a516e959-df54-4035-bb1a-63599b7a6df9
+        root_volume_size_gb: 20
+  downstream_cluster_distro_module: generic/rke2
+
+  # downstream_cluster_templates:
+  #   - cluster_count: 2000
+  #     server_count: 1
+  #     agent_count: 0
+  #     distro_version: v1.33.4+k3s1
+  #     public_ip: false
+  #     reserve_node_for_monitoring: false
+  #     enable_audit_log: false
+  #     node_module_variables:
+  #       instance_type: t4g.large
+  #       ami: ami-04effc0585c8f1e3e # openSUSE-Leap-15-6-v20250408-hvm-ssd-arm64-a516e959-df54-4035-bb1a-63599b7a6df9
+  #       root_volume_size_gb: 20
+  # downstream_cluster_distro_module: generic/k3s
+
+  first_kubernetes_api_port: 7445
+  first_app_http_port: 9080
+  first_app_https_port: 9443

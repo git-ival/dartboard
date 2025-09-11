@@ -18,3 +18,7 @@ for device in `ls /dev/nvme?n?`; do
     exit 0
   fi
 done
+
+if ! grep -q /data /etc/fstab; then
+  echo "${device}p1 /data xfs defaults 0 0" >> /etc/fstab
+fi
