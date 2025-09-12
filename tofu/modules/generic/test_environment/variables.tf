@@ -59,6 +59,7 @@ variable "downstream_cluster_templates" {
     create_tunnels              = bool // Whether ssh tunnels to the downstream cluster's first server node should be created. Default false
 
     node_module_variables = any // Node module-specific variables
+    agent_node_module_variables = any // Node module-specific variables
   }))
   validation {
     condition     = alltrue([for i, template in var.downstream_cluster_templates : template.cluster_count > 0 ? template.server_count > 0 ? true : false : true ])

@@ -49,7 +49,7 @@ module "agent_nodes" {
   ssh_private_key_path  = var.ssh_private_key_path
   ssh_user              = var.ssh_user
   node_module           = var.node_module
-  node_module_variables = var.node_module_variables
+  node_module_variables = var.agent_node_module_variables != null ? var.agent_node_module_variables : var.node_module_variables
   network_config        = var.network_config
 }
 

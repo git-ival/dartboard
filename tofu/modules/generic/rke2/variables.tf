@@ -104,6 +104,13 @@ variable "node_module_variables" {
   type        = any
 }
 
+variable "agent_node_module_variables" {
+  description = "Node module-specific configuration variables for agent nodes in this cluster"
+  type        = any
+  default = null
+}
+
+
 variable "network_config" {
   description = "Network module outputs, to be passed to node_module"
   type        = any

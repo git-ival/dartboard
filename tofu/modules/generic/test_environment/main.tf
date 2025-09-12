@@ -89,4 +89,5 @@ module "downstream_clusters" {
   node_module               = var.node_module
   network_config            = var.network_config
   node_module_variables     = local.downstream_clusters[count.index].node_module_variables
+  agent_node_module_variables     = local.downstream_clusters[count.index].agent_node_module_variables
 }
