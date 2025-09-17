@@ -58,6 +58,8 @@ tofu_variables:
       reserve_node_for_monitoring: false
       enable_audit_log: false
       create_tunnels: true
+      max_pods: 400
+      node_cidr_mask_size: "21"
       node_module_variables:
         # k3k controller needs cpu
         instance_type: c5d.9xlarge
