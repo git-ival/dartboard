@@ -36,17 +36,6 @@ data "http" "myip" {
   }
 }
 
-data "http" "myip" {
-  url = "https://ipv4.icanhazip.com"
-
-  lifecycle {
-    postcondition {
-      condition     = contains([200], self.status_code)
-      error_message = "Status code invalid"
-    }
-  }
-}
-
 resource "aws_internet_gateway" "main" {
   count  = local.create_vpc ? 1 : 0
   vpc_id = local.vpc_id
@@ -58,7 +47,6 @@ resource "aws_internet_gateway" "main" {
 }
 
 resource "aws_eip" "nat_eip" {
-  count = local.create_vpc ? 1 : 0
 
   tags = {
     Project = var.project_name
@@ -67,8 +55,7 @@ resource "aws_eip" "nat_eip" {
 }
 
 resource "aws_nat_gateway" "nat" {
-  count         = local.create_vpc ? 1 : 0
-  allocation_id = one(aws_eip.nat_eip[*].id)
+  allocation_id = aws_eip.nat_eip.id
   subnet_id     = local.public_subnet_id
 
   depends_on = [data.aws_internet_gateway.existing, aws_internet_gateway.main]
@@ -131,11 +118,10 @@ resource "aws_key_pair" "key_pair" {
 resource "aws_main_route_table_association" "vpc_internet" {
   count          = local.create_vpc ? 1 : 0
   vpc_id         = local.vpc_id
-  route_table_id = one(aws_route_table.public[*].id)
+  route_table_id = aws_route_table.public.id
 }
 
 resource "aws_route_table" "public" {
-  count  = local.create_vpc ? 1 : 0
   vpc_id = local.vpc_id
 
   route {
@@ -150,12 +136,11 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table" "private" {
-  count  = local.create_vpc ? 1 : 0
   vpc_id = local.vpc_id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = one(aws_nat_gateway.nat[*].id)
+    nat_gateway_id = aws_nat_gateway.nat.id
   }
 
   tags = {
@@ -165,21 +150,19 @@ resource "aws_route_table" "private" {
 }
 
 resource "aws_route_table_association" "public" {
-  count          = local.create_vpc ? 1 : 0
   subnet_id      = local.public_subnet_id
-  route_table_id = one(aws_route_table.public[*].id)
+  route_table_id = aws_route_table.public.id
 }
 
 resource "aws_route_table_association" "private" {
-  count          = local.create_vpc ? 1 : 0
   subnet_id      = local.private_subnet_id
-  route_table_id = one(aws_route_table.private[*].id)
+  route_table_id = aws_route_table.private.id
 }
 
 resource "aws_route_table_association" "secondary_private" {
   count          = local.create_vpc && var.secondary_availability_zone != null ? 1 : 0
   subnet_id      = local.secondary_private_subnet_id
-  route_table_id = one(aws_route_table.private[*].id)
+  route_table_id = aws_route_table.private.id
 }
 
 resource "aws_vpc_dhcp_options" "dhcp_options" {
@@ -205,7 +188,7 @@ data "aws_ec2_managed_prefix_list" "this" {
 }
 
 resource "aws_security_group" "ssh_ipv4" {
-  name        = "${var.project_name}-ssh_ipv4"
+  name        = "ssh_ipv4"
   description = "Enables SSH access for approved CIDR ranges and specific IPs"
   vpc_id      = local.vpc_id
 
@@ -215,7 +198,7 @@ resource "aws_security_group" "ssh_ipv4" {
 
   tags = {
     Project = var.project_name
-    Name    = "${var.project_name}-ssh-security-group"
+    Name    = "${var.project_name}-public-security-group"
   }
 }
 
@@ -286,25 +269,12 @@ resource "aws_vpc_security_group_ingress_rule" "public_udp_weave" {
 
 
 resource "aws_vpc_security_group_ingress_rule" "public_k8s" {
-  count             = var.ssh_prefix_list != null ? 1 : 0
-  description       = "Allow traffic from prefix-list IPs to k8s API port"
+  description       = "Allow all traffic to k8s API port"
   security_group_id = aws_security_group.public.id
-  prefix_list_id    = data.aws_ec2_managed_prefix_list.this[0].id
+  cidr_ipv4         = "0.0.0.0/0"
   from_port         = 6443
   to_port           = 6443
   ip_protocol       = "tcp"
-}
-
-resource "aws_vpc_security_group_ingress_rule" "public_k8s_cidrs" {
-  for_each = toset([
-    "3.0.0.0/8", "52.0.0.0/8", "13.0.0.0/8", "18.0.0.0/8", "54.0.0.0/8"
-  ])
-  description       = "K8s API from Approved CIDR ranges (${each.value})"
-  from_port         = 6443
-  to_port           = 6443
-  ip_protocol       = "tcp"
-  cidr_ipv4         = each.value
-  security_group_id = aws_security_group.public.id
 }
 
 resource "aws_vpc_security_group_ingress_rule" "public_rke2" {
@@ -508,6 +478,7 @@ module "bastion" {
     ami : var.bastion_host_ami
     instance_type : var.bastion_host_instance_type
     root_volume_size_gb : 30
+    host_configuration_commands : []
   }
   network_config = {
     availability_zone : var.availability_zone
