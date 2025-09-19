@@ -44,7 +44,8 @@ upstream_cluster = {
 # Downstream Cluster Configuration
 downstream_cluster_templates = [
   {
-    cluster_count = 1000
+    # 1024 is max, but this block can be repeated
+    cluster_count = 50
     server_count = 1
     agent_count = 0
     distro_version = "v1.33.4+k3s1"
