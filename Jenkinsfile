@@ -1,3 +1,4 @@
+#!groovy
 // Declarative Pipeline Syntax
 
 import groovy.text.SimpleTemplateEngine
@@ -15,7 +16,6 @@ String renderTemplateText(String templateText, Map binding) {
     def template = engine.createTemplate(templateText)
     return template.make(binding).toString()
 }
-
 
 pipeline {
     agent { label 'vsphere-vpn-1' }
