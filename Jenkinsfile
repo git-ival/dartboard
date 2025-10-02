@@ -23,7 +23,6 @@ pipeline {
     environment {
         // Define environment variables here.  These are available throughout the pipeline.
         imageName = 'dartboard'
-        testsDir = './k6'
         envFile = ".env"
         qaseEnvFile = '.qase.env'
         k6EnvFile = 'k6.env'
@@ -49,7 +48,13 @@ pipeline {
                     $class: 'GitSCM',
                     branches: [[name: "*/${branch}"]],
                     userRemoteConfigs: repoConfig,
-                    extensions: scm.extensions + [[$class: 'CleanCheckout']],
+                    extensions: scm.extensions + [[$class: 'CleanCheckout', relativeTargetDir: 'dartboard']],
+                ]
+                checkout scm: [
+                    $class: 'GitSCM',
+                    branches: [[name: "*/main"]],
+                    userRemoteConfigs: [[url: 'https://github.com/rancher/tests.git']],
+                    extensions: scm.extensions + [[$class: 'CleanCheckout', relativeTargetDir: 'rancher-tests']],
                 ]
               }
             }
@@ -58,6 +63,7 @@ pipeline {
         // TODO: Set up a QASE client to utilize these for logging test run results + artifacts
         stage('Create QASE Environment Variables') {
             steps {
+              dir('rancher-tests'){
                 script {
                     def qase = 'REPORT_TO_QASE=' + params.REPORT_TO_QASE + '\n' +
                                 'QASE_PROJECT_ID=' + params.QASE_PROJECT_ID + '\n' +
@@ -65,47 +71,62 @@ pipeline {
                                 'QASE_TEST_RUN_NAME=' + params.QASE_TEST_CASE_ID + '\n' +
                                 'QASE_AUTOMATION_TOKEN=' + credentials('QASE_AUTOMATION_TOKEN') + '\n' // Use credentials plugin
                     writeFile file: qaseEnvFile, text: qase
+                    def reporterBuildPath = "${WORKSPACE}/rancher-tests/validation"
+                    sh """
+                    set -o allexport
+                    echo '---- .qase.env ----'
+                    source ${qaseEnvFile}
+                    printenv
+                    set +o allexport
+                    ${WORKSPACE}/rancher-tests/validation/pipeline/scripts/${params.REPORTER_BUILD_SCRIPT};
+                    if [ -f ${reporterBuildPath}/reporter ]; then ${reporterBuildPath}/reporter; else echo \\"Reporter script not present or failed to build binary!\\"; fi
+                    """
                 }
+              }
             }
         }
 
         stage('Configure and Build') {
             steps {
-              script {
-                echo "OUTPUTTING ENV FOR MANUAL VERIFICATION:"
-                sh 'printenv'
-                echo "Storing env in file"
-                sh "printenv | egrep '^(ARM_|CATTLE_|ADMIN|USER|DO|RANCHER_|AWS_|DEBUG|LOGLEVEL|DEFAULT_|OS_|DOCKER_|CLOUD_|KUBE|BUILD_NUMBER|AZURE|TEST_|QASE_|SLACK_|harvester|K6_TEST|TF_).*=.+' | sort > ${env.envFile}"
-                sh "cat ${env.envFile}"
-                sh "echo 'TF_LOG=DEBUG' >> ${env.envFile}"
+              dir('dartboard'){
+                script {
+                  echo "OUTPUTTING ENV FOR MANUAL VERIFICATION:"
+                  sh 'printenv'
+                  echo "Storing env in file"
+                  sh "printenv | egrep '^(ARM_|CATTLE_|ADMIN|USER|DO|RANCHER_|AWS_|DEBUG|LOGLEVEL|DEFAULT_|OS_|DOCKER_|CLOUD_|KUBE|BUILD_NUMBER|AZURE|TEST_|QASE_|SLACK_|harvester|K6_TEST|TF_).*=.+' | sort > ${env.envFile}"
+                  sh "cat ${env.envFile}"
+                  sh "echo 'TF_LOG=DEBUG' >> ${env.envFile}"
 
-                echo "PRE-EXISTING IMAGES:"
-                sh "docker image ls"
+                  echo "PRE-EXISTING IMAGES:"
+                  sh "docker image ls"
 
-                // This will run `docker build -t my-image:main .`
-                docker.build("${env.imageName}:latest")
+                  // This will run `docker build -t my-image:main .`
+                  docker.build("${env.imageName}:latest")
 
-                echo "NEW IMAGES:"
-                sh "docker image ls"
-                sh 'ls -al'
+                  echo "NEW IMAGES:"
+                  sh "docker image ls"
+                  sh 'ls -al'
+                }
               }
             }
         }
 
         stage('Prepare Parameter Files') {
           steps {
-            script {
-              writeFile file: env.k6EnvFile,           text: params.K6_ENV
-              writeFile file: env.harvesterKubeconfig, text: params.HARVESTER_KUBECONFIG
-              writeFile file: env.templateDartFile,    text: params.DART_FILE
+            dir('dartboard'){
+              script {
+                writeFile file: env.k6EnvFile,           text: params.K6_ENV
+                writeFile file: env.harvesterKubeconfig, text: params.HARVESTER_KUBECONFIG
+                writeFile file: env.templateDartFile,    text: params.DART_FILE
 
-              echo "DUMPING INPUT FILES FOR MANUAL VERIFICATION"
-              echo "---- k6.env ----"
-              sh "cat ${env.k6EnvFile}"
-              echo "---- harvester.kubeconfig ----"
-              sh "cat ${env.harvesterKubeconfig}"
-              echo "---- template-dart.yaml ----"
-              sh "cat ${env.templateDartFile}"
+                echo "DUMPING INPUT FILES FOR MANUAL VERIFICATION"
+                echo "---- k6.env ----"
+                sh "cat ${env.k6EnvFile}"
+                echo "---- harvester.kubeconfig ----"
+                sh "cat ${env.harvesterKubeconfig}"
+                echo "---- template-dart.yaml ----"
+                sh "cat ${env.templateDartFile}"
+              }
             }
           }
         }
@@ -115,7 +136,7 @@ pipeline {
             docker {
               image "${env.imageName}:latest"
               reuseNode true
-              args "--entrypoint='' --user root --env-file ${WORKSPACE}/${env.envFile}"
+              args "--entrypoint='' --user root --env-file dartboard/${env.envFile}"
             }
           }
           steps {
@@ -159,7 +180,7 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
-                args "--entrypoint='' --user root --env-file ${WORKSPACE}/${env.envFile}"
+                args "--entrypoint='' --user root --env-file dartboard/${env.envFile}"
               }
             }
             steps {
@@ -176,7 +197,7 @@ pipeline {
               docker {
                 image "${env.imageName}:latest"
                 reuseNode true
-                args "--entrypoint='' --user root --env-file ${WORKSPACE}/${envFile}"
+                args "--entrypoint='' --user root --env-file dartboard/${envFile}"
               }
             }
             steps {
