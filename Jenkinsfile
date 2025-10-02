@@ -61,8 +61,8 @@ pipeline {
                 script {
                     def qase = 'REPORT_TO_QASE=' + params.REPORT_TO_QASE + '\n' +
                                 'QASE_PROJECT_ID=' + params.QASE_PROJECT_ID + '\n' +
-                                'QASE_RUN_ID=' + params.QASE_RUN_ID + '\n' +
-                                'QASE_TEST_CASE_ID=' + params.QASE_TEST_CASE_ID + '\n' +
+                                'QASE_TEST_RUN_ID=' + params.QASE_TEST_RUN_ID + '\n' +
+                                'QASE_TEST_RUN_NAME=' + params.QASE_TEST_CASE_ID + '\n' +
                                 'QASE_AUTOMATION_TOKEN=' + credentials('QASE_AUTOMATION_TOKEN') + '\n' // Use credentials plugin
                     writeFile file: qaseEnvFile, text: qase
                 }
