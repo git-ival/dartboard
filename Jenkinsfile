@@ -26,6 +26,9 @@ pipeline {
         envFile = ".env"
         qaseEnvFile = '.qase.env'
         k6EnvFile = 'k6.env'
+        k6TestsDir = "k6/"
+        k6OutputJson = 'k6-output.json'
+        k6SummaryLog = 'k6-summary.log'
         harvesterKubeconfig = 'harvester.kubeconfig'
         templateDartFile = 'template-dart.yaml'
         renderedDartFile = 'rendered-dart.yaml'
@@ -71,7 +74,7 @@ pipeline {
                                 'QASE_TEST_RUN_NAME=' + params.QASE_TEST_CASE_ID + '\n' +
                                 'QASE_AUTOMATION_TOKEN=' + credentials('QASE_AUTOMATION_TOKEN') + '\n' // Use credentials plugin
                     writeFile file: qaseEnvFile, text: qase
-                    def reporterBuildPath = "${WORKSPACE}/rancher-tests/validation"
+                    def reporterBuildPath = "./validation"
                     sh """
                     set -o allexport
                     echo '---- .qase.env ----'
@@ -79,7 +82,7 @@ pipeline {
                     printenv
                     set +o allexport
                     ${WORKSPACE}/rancher-tests/validation/pipeline/scripts/${params.REPORTER_BUILD_SCRIPT};
-                    if [ -f ${reporterBuildPath}/reporter ]; then ${reporterBuildPath}/reporter; else echo \\"Reporter script not present or failed to build binary!\\"; fi
+                    if [ -f ${reporterBuildPath}/reporter-k6 ]; then echo 'Successfully built qasereporter-k6!'; else echo 'K6 Qase reporter script not present or failed to build binary!'; fi
                     """
                 }
               }
@@ -187,7 +190,7 @@ pipeline {
               script {
                 echo 'WORKSPACE:'
                 sh 'ls -al'
-                sh "dartboard --dart ${env.renderedDartFile} deploy"
+                sh "dartboard --dart dartboard/${env.renderedDartFile} deploy"
               }
             }
         }
@@ -206,22 +209,40 @@ pipeline {
                 // become environment variables for the k6 process
                 // `set` docs: https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html
 
-                // Compute the output filename in Groovy
-                def baseName = params.K6_TEST.replaceFirst(/\.js$/, '')
-                def outJson  = "${baseName}-output.json"
+                // The k6 run command will tee its stdout to a summary log file
+                // and also write structured JSON output.
+                def k6Command = "k6 run --out json=${env.k6OutputJson} dartboard/${env.k6TestsDir}/${params.K6_TEST} | tee ${env.k6SummaryLog}"
 
-                if (fileExists(env.K6_ENV_FILE) && params.K6_ENV?.trim()) {
+                if (fileExists(env.k6EnvFile)) {
                   sh """
                     set -o allexport
-                    source ${env.K6_ENV_FILE}
+                    source ${env.k6EnvFile}
                     set +o allexport
-                    k6 run --out json="${outJson}" ${env.TESTS_DIR}/${params.K6_TEST}
+                    ${k6Command}
                   """
                 } else {
-                  sh "k6 run --out json=\"${outJson}\" ${env.TESTS_DIR}/${params.K6_TEST}"
+                  sh "${k6Command}"
                 }
               }
             }
+        }
+
+        stage('Report Results to Qase') {
+          steps {
+            dir('rancher-tests'){
+              script {
+                // If reporting is enabled, run the k6 Qase reporter
+                if (params.REPORT_TO_QASE) {
+                  def reporterBuildPath = "./validation"
+                  sh """
+                    export K6_OUTPUT_FILE=${env.k6OutputJson}
+                    export K6_SUMMARY_FILE=${env.k6SummaryLog}
+                    if [ -f ${reporterBuildPath}/reporter-k6 ]; then ${reporterBuildPath}/reporter-k6; else echo 'K6 Qase reporter script not present or failed to build binary!'; fi
+                  """
+                }
+              }
+            }
+          }
         }
     }
 
@@ -235,7 +256,7 @@ pipeline {
             */
             echo "Archiving Terraform state and K6 test results..."
             // wildcard for any *.tfstate or backup, plus our k6 json output
-            archiveArtifacts artifacts: '**/*.tfstate*, **/*.output.json **/*.pem **/*.pub **/*.yaml **/*.sh **/*.env', fingerprint: true
+            archiveArtifacts artifacts: '**/*.tfstate*, **/*.json **/*.pem **/*.pub **/*.yaml **/*.sh **/*.env', fingerprint: true
             sh "docker image rm -f ${env.imageName}"
             echo "POST-CLEANUP IMAGES:"
             sh "docker image ls"
