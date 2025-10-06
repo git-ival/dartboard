@@ -8,6 +8,7 @@ def jobContainer
 
 pipeline {
     // agent { label 'vsphere-vpn-1' }
+    agent any
 
     environment {
         // Define environment variables here.  These are available throughout the pipeline.
