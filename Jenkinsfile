@@ -7,7 +7,7 @@ def scmWorkspace
 def jobContainer
 
 pipeline {
-    agent { label 'vsphere-vpn-1' }
+    // agent { label 'vsphere-vpn-1' }
 
     environment {
         // Define environment variables here.  These are available throughout the pipeline.
