@@ -107,7 +107,7 @@ pipeline {
               """
               def names = generate.names()
               jobContainer = [name: names.container, image: "${env.imageName}:latest", envFile: "dartboard/${env.envFile}", tty: false, extraArgs: "--entrypoint='' --user root -v ${pwd()}:${pwd()} --workdir ${pwd()}"]
-              container.run(container: jobContainer, test: [command: sshScript])
+              container.run(container: jobContainer, test: [command: [sshScript]])
               container.remove([[name: jobContainer.name]])
             }
           }
@@ -133,7 +133,7 @@ pipeline {
             steps {
               script {
                 def names = generate.names()
-                container.run(container: jobContainer, test: [command: "dartboard --dart dartboard/${env.renderedDartFile} deploy"])
+                container.run(container: jobContainer, test: [command: ["dartboard --dart dartboard/${env.renderedDartFile} deploy"]])
                 container.remove([[name: jobContainer.name]])
               }
             }
@@ -146,7 +146,7 @@ pipeline {
                   def k6TestCommand = fileExists("dartboard/${env.k6EnvFile}") ? "set -o allexport; source ${env.k6EnvFile}; set +o allexport; ${k6BaseCommand}" : k6BaseCommand
 
                   def names = generate.names()
-                  container.run(container: jobContainer, test: [command: k6TestCommand])
+                  container.run(container: jobContainer, test: [command: [k6TestCommand]])
                   container.remove([[name: jobContainer.name]])
                 }
             }
