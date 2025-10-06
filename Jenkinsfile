@@ -38,7 +38,6 @@ pipeline {
         // TODO: Set up a QASE client to utilize these for logging test run results + artifacts
         stage('Create QASE Environment Variables') {
             steps {
-              dir('rancher-tests'){
                 script {
                     def qase = 'REPORT_TO_QASE=' + params.REPORT_TO_QASE + '\n' +
                                 'QASE_PROJECT_ID=' + params.QASE_PROJECT_ID + '\n' +
@@ -54,7 +53,6 @@ pipeline {
                     set +o allexport
                     """
                 }
-              }
             }
         }
 
