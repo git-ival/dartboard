@@ -13,6 +13,7 @@ pipeline {
     environment {
         // Define environment variables here.  These are available throughout the pipeline.
         imageName = 'dartboard'
+        qaseToken = credentials('QASE_AUTOMATION_TOKEN')
         qaseEnvFile = '.qase.env'
         k6EnvFile = 'k6.env'
         k6TestsDir = "k6/"
@@ -43,7 +44,7 @@ pipeline {
                                 'QASE_PROJECT_ID=' + params.QASE_PROJECT_ID + '\n' +
                                 'QASE_TEST_RUN_ID=' + params.QASE_TEST_RUN_ID + '\n' +
                                 'QASE_TEST_RUN_NAME=' + params.QASE_TEST_CASE_ID + '\n' +
-                                'QASE_AUTOMATION_TOKEN=' + credentials('QASE_AUTOMATION_TOKEN') + '\n' // Use credentials plugin
+                                'QASE_AUTOMATION_TOKEN=' + qaseToken + '\n' // Use credentials plugin
                     writeFile file: qaseEnvFile, text: qase
                     sh """
                     set -o allexport
