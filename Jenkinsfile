@@ -1,21 +1,10 @@
 #!groovy
 // Declarative Pipeline Syntax
+@Library('qa-jenkins-library') _
 
-import groovy.text.SimpleTemplateEngine
-import com.cloudbees.groovy.cps.NonCPS
+def scmWorkspace
 
-/**
- * Renders a GString‑style templateText, substituting in the binding map.
- * Must be @NonCPS because SimpleTemplateEngine and Template aren’t Serializable.
- * Note: This will fail if the template does not include one or more of the expected vars inside the bindings map
- * https://docs.groovy-lang.org/latest/html/api/groovy/text/SimpleTemplateEngine.html
- */
-@NonCPS
-String renderTemplateText(String templateText, Map binding) {
-    def engine   = new SimpleTemplateEngine()
-    def template = engine.createTemplate(templateText)
-    return template.make(binding).toString()
-}
+def jobContainer
 
 pipeline {
     agent { label 'vsphere-vpn-1' }
@@ -23,7 +12,6 @@ pipeline {
     environment {
         // Define environment variables here.  These are available throughout the pipeline.
         imageName = 'dartboard'
-        envFile = ".env"
         qaseEnvFile = '.qase.env'
         k6EnvFile = 'k6.env'
         k6TestsDir = "k6/"
@@ -32,6 +20,7 @@ pipeline {
         harvesterKubeconfig = 'harvester.kubeconfig'
         templateDartFile = 'template-dart.yaml'
         renderedDartFile = 'rendered-dart.yaml'
+        envFile = ".env" // Used by container.run
     }
 
     // No parameters block here—JJB YAML defines them
@@ -40,19 +29,7 @@ pipeline {
         stage('Checkout') {
             steps {
               script {
-                // Choose between the SCM config or an override from params.REPO
-                def repoConfig = params.REPO ?
-                  [[ url: params.REPO ]] :
-                  scm.userRemoteConfigs
-                // Choose between the default "main" branch or the override from params.BRANCH
-                def branch = params.BRANCH ? params.BRANCH : "main"
-                // Use `checkout scm` to checkout the repository
-                checkout scm: [
-                    $class: 'GitSCM',
-                    branches: [[name: "*/${branch}"]],
-                    userRemoteConfigs: repoConfig,
-                    extensions: scm.extensions + [[$class: 'CleanCheckout', relativeTargetDir: 'dartboard']],
-                ]
+                scmWorkspace = project.checkout(repository: params.REPO, branch: params.BRANCH, target: 'dartboard')
               }
             }
         }
@@ -85,21 +62,10 @@ pipeline {
               dir('dartboard'){
                 script {
                   echo "OUTPUTTING ENV FOR MANUAL VERIFICATION:"
-                  sh 'printenv'
                   echo "Storing env in file"
                   sh "printenv | egrep '^(ARM_|CATTLE_|ADMIN|USER|DO|RANCHER_|AWS_|DEBUG|LOGLEVEL|DEFAULT_|OS_|DOCKER_|CLOUD_|KUBE|BUILD_NUMBER|AZURE|TEST_|QASE_|SLACK_|harvester|K6_TEST|TF_).*=.+' | sort > ${env.envFile}"
-                  sh "cat ${env.envFile}"
                   sh "echo 'TF_LOG=DEBUG' >> ${env.envFile}"
-
-                  echo "PRE-EXISTING IMAGES:"
-                  sh "docker image ls"
-
-                  // This will run `docker build -t my-image:main .`
-                  docker.build("${env.imageName}:latest")
-
-                  echo "NEW IMAGES:"
-                  sh "docker image ls"
-                  sh 'ls -al'
+                  container.build(buildScript: "docker build -t ${env.imageName}:latest .")
                 }
               }
             }
@@ -126,29 +92,22 @@ pipeline {
         }
 
         stage('Setup SSH Keys') {
-          agent {
-            docker {
-              image "${env.imageName}:latest"
-              reuseNode true
-              args "--entrypoint='' --user root --env-file dartboard/${env.envFile}"
-            }
-          }
           steps {
             script {
-              echo 'PRE-SHELL WORKSPACE:'
-              sh 'ls -al'
-              // Decode the base64‐encoded private key into a file named after SSH_KEY_NAME
-              // Write the public key string into a .pub file
-              sh "echo ${env.SSH_PEM_KEY} | base64 -di > ${WORKSPACE}/${env.SSH_KEY_NAME}.pem"
-              sh "chmod 600 ${WORKSPACE}/${env.SSH_KEY_NAME}.pem"
-              sh "chown k6:k6 ${WORKSPACE}/${env.SSH_KEY_NAME}.pem"
-
-              sh "echo ${env.SSH_PUB_KEY} > ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
-              sh "chmod 644 ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
-              sh "chown k6:k6 ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
-
-              echo "VERIFICATION FOR PUB KEY:"
-              sh "cat ${WORKSPACE}/${env.SSH_KEY_NAME}.pub"
+              def sshScript = """
+                echo "${env.SSH_PEM_KEY}" | base64 -di > ${env.SSH_KEY_NAME}.pem
+                chmod 600 ${env.SSH_KEY_NAME}.pem
+                chown k6:k6 ${env.SSH_KEY_NAME}.pem
+                echo "${env.SSH_PUB_KEY}" > ${env.SSH_KEY_NAME}.pub
+                chmod 644 ${env.SSH_KEY_NAME}.pub
+                chown k6:k6 ${env.SSH_KEY_NAME}.pub
+                echo "VERIFICATION FOR PUB KEY:"
+                cat ${env.SSH_KEY_NAME}.pub
+              """
+              def names = generate.names()
+              jobContainer = [name: names.container, image: "${env.imageName}:latest", envFile: "dartboard/${env.envFile}", tty: false, extraArgs: "--entrypoint='' --user root -v ${pwd()}:${pwd()} --workdir ${pwd()}"]
+              container.run(container: jobContainer, test: [command: sshScript])
+              container.remove([[name: jobContainer.name]])
             }
           }
         }
@@ -156,11 +115,11 @@ pipeline {
         stage('Render Dart file') {
           steps {
             sh """
-              # 1) Write variables into env for envsubst
-              export HARVESTER_KUBECONFIG=\${WORKSPACE}/${env.harvesterKubeconfig}
-              export SSH_KEY_NAME=\${WORKSPACE}/${env.SSH_KEY_NAME}
+              # 1) Export variables for envsubst
+              export HARVESTER_KUBECONFIG=${pwd()}/dartboard/${env.harvesterKubeconfig}
+              export SSH_KEY_NAME=${pwd()}/${env.SSH_KEY_NAME}
 
-              # 2) Substitute the variables into the dart file, output to rendered dart file
+              # 2) Substitute variables and output to rendered dart file
               envsubst < ${env.templateDartFile} > ${env.renderedDartFile}
 
               echo "RENDERED DART:"
@@ -170,68 +129,41 @@ pipeline {
         }
 
         stage('Setup Infrastructure') {
-            agent {
-              docker {
-                image "${env.imageName}:latest"
-                reuseNode true
-                args "--entrypoint='' --user root --env-file dartboard/${env.envFile}"
-              }
-            }
             steps {
               script {
-                echo 'WORKSPACE:'
-                sh 'ls -al'
-                sh "dartboard --dart dartboard/${env.renderedDartFile} deploy"
+                def names = generate.names()
+                container.run(container: jobContainer, test: [command: "dartboard --dart dartboard/${env.renderedDartFile} deploy"])
+                container.remove([[name: jobContainer.name]])
               }
             }
         }
 
         stage('Run Validation Tests') {
-          agent {
-              docker {
-                image "${env.imageName}:latest"
-                reuseNode true
-                args "--entrypoint='' --user root --env-file dartboard/${envFile}"
-              }
-            }
             steps {
-              script {
-                // if the user uploaded a K6_ENV file, source it so all its KEY=VALUE lines
-                // become environment variables for the k6 process
-                // `set` docs: https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html
+                script {
+                  def k6BaseCommand = "k6 run --out json=${env.k6OutputJson} dartboard/${env.k6TestsDir}/${params.K6_TEST} | tee ${env.k6SummaryLog}"
+                  def k6TestCommand = fileExists("dartboard/${env.k6EnvFile}") ? "set -o allexport; source ${env.k6EnvFile}; set +o allexport; ${k6BaseCommand}" : k6BaseCommand
 
-                // The k6 run command will tee its stdout to a summary log file
-                // and also write structured JSON output.
-                def k6Command = "k6 run --out json=${env.k6OutputJson} dartboard/${env.k6TestsDir}/${params.K6_TEST} | tee ${env.k6SummaryLog}"
-
-                if (fileExists(env.k6EnvFile)) {
-                  sh """
-                    set -o allexport
-                    source ${env.k6EnvFile}
-                    set +o allexport
-                    ${k6Command}
-                  """
-                } else {
-                  sh "${k6Command}"
+                  def names = generate.names()
+                  container.run(container: jobContainer, test: [command: k6TestCommand])
+                  container.remove([[name: jobContainer.name]])
                 }
-              }
             }
         }
 
     post {
       always {
         script {
-            /*
-            Because all docker stages share the same container and workspace (due to `reuseNode true`),
-            any files written in the container (e.g. terraform.tfstate, terraform.tfstate.backup, or k6 output.json)
-            end up directly on the Jenkins agent’s workspace.
-            */
             echo "Archiving Terraform state and K6 test results..."
-            // wildcard for any *.tfstate or backup, plus our k6 json output
-            archiveArtifacts artifacts: '**/*.tfstate*, **/*.json **/*.pem **/*.pub **/*.yaml **/*.sh **/*.env', fingerprint: true
-            sh "docker image rm -f ${env.imageName}"
-            echo "POST-CLEANUP IMAGES:"
-            sh "docker image ls"
+            // The workspace is shared, so artifacts are on the agent
+            archiveArtifacts artifacts: 'dartboard/**/*.tfstate*, dartboard/**/*.json, dartboard/**/*.pem, dartboard/**/*.pub, dartboard/**/*.yaml, dartboard/**/*.sh, dartboard/**/*.env', fingerprint: true
+
+            // Cleanup Docker image
+            try {
+              container.remove([ [name: jobContainer.name, image: jobContainer.image] ])
+            } catch (e) {
+              echo "Could not remove docker image ${env.imageName}:latest. It may have already been removed. ${e.message}"
+            }
         }
       }
     }
