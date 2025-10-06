@@ -3,8 +3,8 @@
 @Library('qa-jenkins-library') _
 
 def scmWorkspace
-
 def jobContainer
+
 
 pipeline {
     // agent { label 'vsphere-vpn-1' }
@@ -60,6 +60,8 @@ pipeline {
         stage('Configure and Build') {
             steps {
                 script {
+                  echo "OUTPUTTING FILE STRUCTURE FOR MANUAL VERIFICATION:"
+                  sh "ls -al"
                   echo "OUTPUTTING ENV FOR MANUAL VERIFICATION:"
                   echo "Storing env in file"
                   sh "printenv | egrep '^(ARM_|CATTLE_|ADMIN|USER|DO|RANCHER_|AWS_|DEBUG|LOGLEVEL|DEFAULT_|OS_|DOCKER_|CLOUD_|KUBE|BUILD_NUMBER|AZURE|TEST_|QASE_|SLACK_|harvester|K6_TEST|TF_).*=.+' | sort > ${env.envFile}"
