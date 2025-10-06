@@ -150,21 +150,20 @@ pipeline {
                 }
             }
         }
+    }
+  post {
+    always {
+      script {
+          echo "Archiving Terraform state and K6 test results..."
+          // The workspace is shared, so artifacts are on the agent
+          archiveArtifacts artifacts: 'dartboard/**/*.tfstate*, dartboard/**/*.json, dartboard/**/*.pem, dartboard/**/*.pub, dartboard/**/*.yaml, dartboard/**/*.sh, dartboard/**/*.env', fingerprint: true
 
-    post {
-      always {
-        script {
-            echo "Archiving Terraform state and K6 test results..."
-            // The workspace is shared, so artifacts are on the agent
-            archiveArtifacts artifacts: 'dartboard/**/*.tfstate*, dartboard/**/*.json, dartboard/**/*.pem, dartboard/**/*.pub, dartboard/**/*.yaml, dartboard/**/*.sh, dartboard/**/*.env', fingerprint: true
-
-            // Cleanup Docker image
-            try {
-              container.remove([ [name: jobContainer.name, image: jobContainer.image] ])
-            } catch (e) {
-              echo "Could not remove docker image ${env.imageName}:latest. It may have already been removed. ${e.message}"
-            }
-        }
+          // Cleanup Docker image
+          try {
+            container.remove([ [name: jobContainer.name, image: jobContainer.image] ])
+          } catch (e) {
+            echo "Could not remove docker image ${env.imageName}:latest. It may have already been removed. ${e.message}"
+          }
       }
     }
   }
