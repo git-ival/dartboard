@@ -57,6 +57,7 @@ pipeline {
 
     stage('Configure and Build') {
         steps {
+          dir('dartboard') {
             script {
               echo "OUTPUTTING FILE STRUCTURE FOR MANUAL VERIFICATION:"
               sh "ls -al"
@@ -64,9 +65,9 @@ pipeline {
               echo "Storing env in file"
               sh "printenv | egrep '^(ARM_|CATTLE_|ADMIN|USER|DO|RANCHER_|AWS_|DEBUG|LOGLEVEL|DEFAULT_|OS_|DOCKER_|CLOUD_|KUBE|BUILD_NUMBER|AZURE|TEST_|QASE_|SLACK_|harvester|K6_TEST|TF_).*=.+' | sort > ${env.envFile}"
               sh "echo 'TF_LOG=DEBUG' >> ${env.envFile}"
-              dir('dartboard') {
-                sh "docker build -t ${env.imageName}:latest ."
-              }                }
+              sh "docker build -t ${env.imageName}:latest ."
+            }
+          }
         }
     }
 
@@ -118,17 +119,22 @@ pipeline {
 
     stage('Render Dart file') {
       steps {
-        sh """
-          # 1) Export variables for envsubst
-          export HARVESTER_KUBECONFIG=${pwd()}/dartboard/${env.harvesterKubeconfig}
-          export SSH_KEY_NAME=${pwd()}/${env.SSH_KEY_NAME}
+        script {
+          def renderScript = """
+            # 1) Export variables for envsubst to use absolute paths inside the container
+            export HARVESTER_KUBECONFIG=${pwd()}/dartboard/${env.harvesterKubeconfig}
+            export SSH_KEY_NAME=${pwd()}/${env.SSH_KEY_NAME}
 
-          # 2) Substitute variables and output to rendered dart file
-          envsubst < ${env.templateDartFile} > ${env.renderedDartFile}
+            # 2) Substitute variables and output to the rendered dart file
+            envsubst < dartboard/${env.templateDartFile} > dartboard/${env.renderedDartFile}
 
-          echo "RENDERED DART:"
-          cat ${env.renderedDartFile}
-        """
+            echo "RENDERED DART:"
+            cat dartboard/${env.renderedDartFile}
+          """
+          sh """
+            docker run --rm --workdir ${pwd()} -v ${pwd()}:${pwd()} --env-file dartboard/${env.envFile} busybox:latest /bin/sh -c '${renderScript}'
+          """
+        }
       }
     }
 
