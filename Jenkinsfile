@@ -21,6 +21,7 @@ pipeline {
     templateDartFile = 'template-dart.yaml'
     renderedDartFile = 'rendered-dart.yaml'
     envFile = ".env" // Used by container.run
+    DEFAULT_PROJECT_NAME = "${JOB_NAME.split('/').last()}-${BUILD_NUMBER}"
   }
 
   // No parameters block here—JJB YAML defines them
@@ -124,6 +125,9 @@ pipeline {
             # 1) Export variables for envsubst to use absolute paths inside the container
             export HARVESTER_KUBECONFIG=${pwd()}/${env.harvesterKubeconfig}
             export SSH_KEY_NAME=${pwd()}/${env.SSH_KEY_NAME}
+
+            # Provide a default for PROJECT_NAME if it's not set, to prevent nil-parsing errors in dartboard
+            export PROJECT_NAME=${PROJECT_NAME:-"${DEFAULT_PROJECT_NAME}"}
 
             # 2) Substitute variables and output to the rendered dart file
             envsubst < ${env.templateDartFile} > ${env.renderedDartFile}
