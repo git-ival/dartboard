@@ -76,79 +76,26 @@ pipeline {
       steps {
         dir('dartboard'){
           script {
-            writeFile file: env.k6EnvFile,           text: params.K6_ENV
+            // Write supporting files from parameters
+            writeFile file: env.k6EnvFile, text: params.K6_ENV
             writeFile file: env.harvesterKubeconfig, text: params.HARVESTER_KUBECONFIG
-            writeFile file: env.templateDartFile,    text: params.DART_FILE
+
+            // Render the Dart file using Groovy string replacement instead of envsubst
+            def dartTemplate = params.DART_FILE
+            def renderedDart = dartTemplate.replace('$HARVESTER_KUBECONFIG', env.harvesterKubeconfig)
+                                           .replace('$SSH_KEY_NAME', params.SSH_KEY_NAME)
+                                           .replace('$PROJECT_NAME', env.DEFAULT_PROJECT_NAME)
+
+            writeFile file: env.renderedDartFile, text: renderedDart
 
             echo "DUMPING INPUT FILES FOR MANUAL VERIFICATION"
             echo "---- k6.env ----"
             sh "cat ${env.k6EnvFile}"
             echo "---- harvester.kubeconfig ----"
             sh "cat ${env.harvesterKubeconfig}"
-            echo "---- template-dart.yaml ----"
-            sh "cat ${env.templateDartFile}"
+            echo "---- rendered-dart.yaml ----"
+            sh "cat ${env.renderedDartFile}"
           }
-        }
-      }
-    }
-
-    stage('Setup SSH Keys') {
-      steps {
-        script {
-          def sshScript = """
-            echo "${env.SSH_PEM_KEY}" | base64 -di > ${env.SSH_KEY_NAME}.pem
-            chmod 600 ${env.SSH_KEY_NAME}.pem
-            chown k6:k6 ${env.SSH_KEY_NAME}.pem
-            echo "${env.SSH_PUB_KEY}" > ${env.SSH_KEY_NAME}.pub
-            chmod 644 ${env.SSH_KEY_NAME}.pub
-            chown k6:k6 ${env.SSH_KEY_NAME}.pub
-            echo "VERIFICATION FOR PUB KEY:"
-            cat ${env.SSH_KEY_NAME}.pub
-          """
-          def names = generate.names()
-          sh """
-            docker run --rm --name ${names.container} \\
-              -v ${pwd()}:/home/ \\
-              --workdir /home/ \\
-              --env-file dartboard/${env.envFile} \\
-              --entrypoint='' --user root \\
-              ${env.imageName}:latest /bin/sh -c '${sshScript}'
-          """
-        }
-      }
-    }
-
-    stage('Render Dart file') {
-      steps {
-        script {
-          def renderScript = """
-            # Execute commands in a subshell to ensure 'cd' is active during redirection
-              cd dartboard/
-              pwd
-              ls -al
-
-              # 1) Export variables for envsubst to use absolute paths inside the container
-              export HARVESTER_KUBECONFIG=./${env.harvesterKubeconfig}
-              export SSH_KEY_NAME=${env.SSH_KEY_NAME}
-
-              # Provide a default for PROJECT_NAME if it's not set, to prevent nil-parsing errors in dartboard
-              export PROJECT_NAME=\${PROJECT_NAME:-\"${DEFAULT_PROJECT_NAME}\"}
-
-              # 2) Substitute variables and output to the rendered dart file
-              envsubst < ./${env.templateDartFile} > ${env.renderedDartFile}
-
-                echo "RENDERED DART:"
-                cat ${env.renderedDartFile}
-            """
-          sh "echo 'OUTPUTTING SCRIPT'"
-          sh "cat ${renderScript}"
-          sh """
-            docker run --rm -v ${pwd()}:/home/ \\
-            --workdir /home/ \\
-            --env-file dartboard/${env.envFile} \\
-            --entrypoint='' --user root ${env.imageName}:latest \\
-            /bin/sh -c '${renderScript}'
-          """
         }
       }
     }
