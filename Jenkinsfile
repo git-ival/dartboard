@@ -107,7 +107,7 @@ pipeline {
           def names = generate.names()
           sh """
             docker run --rm --name ${names.container} \\
-              --workdir ${pwd()} \\
+              --workdir ${pwd()}/dartboard \\
               -v ${pwd()}:${pwd()} \\
               --env-file dartboard/${env.envFile} \\
               --entrypoint='' --user root \\
@@ -122,17 +122,17 @@ pipeline {
         script {
           def renderScript = """
             # 1) Export variables for envsubst to use absolute paths inside the container
-            export HARVESTER_KUBECONFIG=${pwd()}/dartboard/${env.harvesterKubeconfig}
+            export HARVESTER_KUBECONFIG=${pwd()}/${env.harvesterKubeconfig}
             export SSH_KEY_NAME=${pwd()}/${env.SSH_KEY_NAME}
 
             # 2) Substitute variables and output to the rendered dart file
-            envsubst < dartboard/${env.templateDartFile} > dartboard/${env.renderedDartFile}
+            envsubst < ${env.templateDartFile} > ${env.renderedDartFile}
 
             echo "RENDERED DART:"
-            cat dartboard/${env.renderedDartFile}
+            cat ${env.renderedDartFile}
           """
           sh """
-            docker run --rm --workdir ${pwd()} -v ${pwd()}:${pwd()} --env-file dartboard/${env.envFile} --entrypoint='' --user root ${env.imageName}:latest /bin/sh -c '${renderScript}'
+            docker run --rm --workdir ${pwd()}/dartboard -v ${pwd()}:${pwd()} --env-file dartboard/${env.envFile} --entrypoint='' --user root ${env.imageName}:latest /bin/sh -c '${renderScript}'
           """
         }
       }
@@ -144,11 +144,11 @@ pipeline {
             def names = generate.names()
             sh """
               docker run --rm --name ${names.container} \\
-                --workdir ${pwd()} \\
+                --workdir ${pwd()}/dartboard \\
                 -v ${pwd()}:${pwd()} \\
                 --env-file dartboard/${env.envFile} \\
                 --entrypoint='' --user root \\
-                ${env.imageName}:latest dartboard --dart dartboard/${env.renderedDartFile} deploy
+                ${env.imageName}:latest dartboard --dart ${env.renderedDartFile} deploy
             """
           }
         }
