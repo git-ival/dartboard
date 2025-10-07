@@ -129,6 +129,9 @@ pipeline {
             # Provide a default for PROJECT_NAME if it's not set, to prevent nil-parsing errors in dartboard
             export PROJECT_NAME=\${PROJECT_NAME:-"${DEFAULT_PROJECT_NAME}"}
 
+            pwd
+            ls -al
+
             # 2) Substitute variables and output to the rendered dart file
             envsubst < ${env.templateDartFile} > ${env.renderedDartFile}
 
