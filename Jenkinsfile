@@ -108,7 +108,6 @@ pipeline {
           def names = generate.names()
           sh """
             docker run --rm --name ${names.container} \\
-              --workdir ${pwd()}/dartboard \\
               -v ${pwd()}:${pwd()} \\
               --env-file dartboard/${env.envFile} \\
               --entrypoint='' --user root \\
@@ -122,15 +121,16 @@ pipeline {
       steps {
         script {
           def renderScript = """
+            cd dartboard/
+            pwd
+            ls -al
+
             # 1) Export variables for envsubst to use absolute paths inside the container
             export HARVESTER_KUBECONFIG=${pwd()}/${env.harvesterKubeconfig}
             export SSH_KEY_NAME=${pwd()}/${env.SSH_KEY_NAME}
 
             # Provide a default for PROJECT_NAME if it's not set, to prevent nil-parsing errors in dartboard
             export PROJECT_NAME=\${PROJECT_NAME:-"${DEFAULT_PROJECT_NAME}"}
-
-            pwd
-            ls -al
 
             # 2) Substitute variables and output to the rendered dart file
             envsubst < ${env.templateDartFile} > ${env.renderedDartFile}
@@ -139,7 +139,10 @@ pipeline {
             cat ${env.renderedDartFile}
           """
           sh """
-            docker run --rm --workdir ${pwd()}/dartboard -v ${pwd()}:${pwd()} --env-file dartboard/${env.envFile} --entrypoint='' --user root ${env.imageName}:latest /bin/sh -c '${renderScript}'
+            docker run --rm -v ${pwd()}:${pwd()} \\
+            --env-file dartboard/${env.envFile} \\
+            --entrypoint='' --user root ${env.imageName}:latest \\
+            /bin/sh -c '${renderScript}'
           """
         }
       }
@@ -151,11 +154,11 @@ pipeline {
             def names = generate.names()
             sh """
               docker run --rm --name ${names.container} \\
-                --workdir ${pwd()}/dartboard \\
                 -v ${pwd()}:${pwd()} \\
                 --env-file dartboard/${env.envFile} \\
                 --entrypoint='' --user root \\
-                ${env.imageName}:latest dartboard --dart ${env.renderedDartFile} deploy
+                ${env.imageName}:latest dartboard \\
+                --dart ${env.renderedDartFile} deploy
             """
           }
         }
@@ -170,7 +173,6 @@ pipeline {
               def names = generate.names()
               sh """
                 docker run --rm --name ${names.container} \\
-                  --workdir ${pwd()} \\
                   -v ${pwd()}:${pwd()} \\
                   --env-file dartboard/${env.envFile} \\
                   --entrypoint='' --user root \\
