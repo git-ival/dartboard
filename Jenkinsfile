@@ -123,7 +123,6 @@ pipeline {
         script {
           def renderScript = """
             # Execute commands in a subshell to ensure 'cd' is active during redirection
-            (
               cd dartboard/
               pwd
               ls -al
@@ -133,14 +132,13 @@ pipeline {
               export SSH_KEY_NAME=${env.SSH_KEY_NAME}
 
               # Provide a default for PROJECT_NAME if it's not set, to prevent nil-parsing errors in dartboard
-              export PROJECT_NAME=\${PROJECT_NAME:-"${DEFAULT_PROJECT_NAME}"}
+              export PROJECT_NAME=\${PROJECT_NAME:-\"${DEFAULT_PROJECT_NAME}\"}
 
               # 2) Substitute variables and output to the rendered dart file
               envsubst < ./${env.templateDartFile} > ${env.renderedDartFile}
 
                 echo "RENDERED DART:"
                 cat ${env.renderedDartFile}
-            )
             """
           sh """
             docker run --rm -v ${pwd()}:/home/ \\
