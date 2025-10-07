@@ -122,23 +122,26 @@ pipeline {
       steps {
         script {
           def renderScript = """
-            cd dartboard/
-            pwd
-            ls -al
+            # Execute commands in a subshell to ensure 'cd' is active during redirection
+            (
+              cd dartboard/
+              pwd
+              ls -al
 
-            # 1) Export variables for envsubst to use absolute paths inside the container
-            export HARVESTER_KUBECONFIG=${pwd()}/${env.harvesterKubeconfig}
-            export SSH_KEY_NAME=${pwd()}/${env.SSH_KEY_NAME}
+              # 1) Export variables for envsubst to use absolute paths inside the container
+              export HARVESTER_KUBECONFIG=./${env.harvesterKubeconfig}
+              export SSH_KEY_NAME=${env.SSH_KEY_NAME}
 
-            # Provide a default for PROJECT_NAME if it's not set, to prevent nil-parsing errors in dartboard
-            export PROJECT_NAME=\${PROJECT_NAME:-"${DEFAULT_PROJECT_NAME}"}
+              # Provide a default for PROJECT_NAME if it's not set, to prevent nil-parsing errors in dartboard
+              export PROJECT_NAME=\${PROJECT_NAME:-"${DEFAULT_PROJECT_NAME}"}
 
-            # 2) Substitute variables and output to the rendered dart file
-            envsubst < ${env.templateDartFile} > ${env.renderedDartFile}
+              # 2) Substitute variables and output to the rendered dart file
+              envsubst < ./${env.templateDartFile} > ${env.renderedDartFile}
 
-            echo "RENDERED DART:"
-            cat ${env.renderedDartFile}
-          """
+                echo "RENDERED DART:"
+                cat ${env.renderedDartFile}
+            )
+            """
           sh """
             docker run --rm -v ${pwd()}:/home/ \\
             --workdir /home/ \\
@@ -157,7 +160,7 @@ pipeline {
             sh """
               docker run --rm --name ${names.container} \\
                 -v ${pwd()}:/home/ \\
-                --workdir /home/ \\
+                --workdir /home/dartboard/ \\
                 --env-file dartboard/${env.envFile} \\
                 --entrypoint='' --user root \\
                 ${env.imageName}:latest dartboard \\
@@ -170,14 +173,14 @@ pipeline {
     stage('Run Validation Tests') {
         steps {
             script {
-              def k6BaseCommand = "k6 run --out json=${env.k6OutputJson} dartboard/${env.k6TestsDir}/${params.K6_TEST} | tee ${env.k6SummaryLog}"
-              def k6TestCommand = fileExists("dartboard/${env.k6EnvFile}") ? "set -o allexport; source ${env.k6EnvFile}; set +o allexport; ${k6BaseCommand}" : k6BaseCommand
+              def k6BaseCommand = "k6 run --out json=${env.k6OutputJson} ${env.k6TestsDir}/${params.K6_TEST} | tee ${env.k6SummaryLog}"
+              def k6TestCommand = fileExists("${env.k6EnvFile}") ? "set -o allexport; source ${env.k6EnvFile}; set +o allexport; ${k6BaseCommand}" : k6BaseCommand
 
               def names = generate.names()
               sh """
                 docker run --rm --name ${names.container} \\
                   -v ${pwd()}:/home/ \\
-                  --workdir /home/ \\
+                  --workdir /home/dartboard/ \\
                   --env-file dartboard/${env.envFile} \\
                   --entrypoint='' --user root \\
                   ${env.imageName}:latest /bin/sh -c '${k6TestCommand}'
