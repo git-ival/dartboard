@@ -132,7 +132,7 @@ pipeline {
             cat dartboard/${env.renderedDartFile}
           """
           sh """
-            docker run --rm --workdir ${pwd()} -v ${pwd()}:${pwd()} --env-file dartboard/${env.envFile} busybox:latest /bin/sh -c '${renderScript}'
+            docker run --rm --workdir ${pwd()} -v ${pwd()}:${pwd()} --env-file dartboard/${env.envFile} ${env.imageName}:latest /bin/sh -c '${renderScript}'
           """
         }
       }

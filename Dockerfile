@@ -9,7 +9,7 @@ WORKDIR $WORKSPACE
 COPY [".", "$WORKSPACE"]
 
 RUN apk update && \
-    apk add bash tar unzip wget curl make
+    apk add bash tar unzip wget curl make gettext
 
 RUN go mod download && \
     go mod tidy && \
