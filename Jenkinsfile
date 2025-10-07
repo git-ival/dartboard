@@ -9,18 +9,18 @@ pipeline {
   agent any
 
   environment {
-      // Define environment variables here.  These are available throughout the pipeline.
-      imageName = 'dartboard'
-      qaseToken = credentials('QASE_AUTOMATION_TOKEN')
-      qaseEnvFile = '.qase.env'
-      k6EnvFile = 'k6.env'
-      k6TestsDir = "k6/"
-      k6OutputJson = 'k6-output.json'
-      k6SummaryLog = 'k6-summary.log'
-      harvesterKubeconfig = 'harvester.kubeconfig'
-      templateDartFile = 'template-dart.yaml'
-      renderedDartFile = 'rendered-dart.yaml'
-      envFile = ".env" // Used by container.run
+    // Define environment variables here.  These are available throughout the pipeline.
+    imageName = 'dartboard'
+    qaseToken = credentials('QASE_AUTOMATION_TOKEN')
+    qaseEnvFile = '.qase.env'
+    k6EnvFile = 'k6.env'
+    k6TestsDir = "k6/"
+    k6OutputJson = 'k6-output.json'
+    k6SummaryLog = 'k6-summary.log'
+    harvesterKubeconfig = 'harvester.kubeconfig'
+    templateDartFile = 'template-dart.yaml'
+    renderedDartFile = 'rendered-dart.yaml'
+    envFile = ".env" // Used by container.run
   }
 
   // No parameters block here—JJB YAML defines them
@@ -104,9 +104,14 @@ pipeline {
             cat ${env.SSH_KEY_NAME}.pub
           """
           def names = generate.names()
-          def jobContainer = [name: names.container, image: "${env.imageName}:latest", envFile: "dartboard/${env.envFile}", tty: false, extraArgs: "--entrypoint='' --user root -v ${pwd()}:${pwd()} --workdir ${pwd()}"]
-          container.run(container: jobContainer, test: [command: [sshScript]])
-          container.remove([[name: jobContainer.name]])
+          sh """
+            docker run --rm --name ${names.container} \\
+              --workdir ${pwd()} \\
+              -v ${pwd()}:${pwd()} \\
+              --env-file dartboard/${env.envFile} \\
+              --entrypoint='' --user root \\
+              ${env.imageName}:latest /bin/sh -c '${sshScript}'
+          """
         }
       }
     }
@@ -131,9 +136,14 @@ pipeline {
         steps {
           script {
             def names = generate.names()
-            def jobContainer = [name: names.container, image: "${env.imageName}:latest", envFile: "dartboard/${env.envFile}", tty: false, extraArgs: "--entrypoint='' --user root -v ${pwd()}:${pwd()} --workdir ${pwd()}"]
-            container.run(container: jobContainer, test: [command: ["dartboard --dart dartboard/${env.renderedDartFile} deploy"]])
-            container.remove([[name: jobContainer.name]])
+            sh """
+              docker run --rm --name ${names.container} \\
+                --workdir ${pwd()} \\
+                -v ${pwd()}:${pwd()} \\
+                --env-file dartboard/${env.envFile} \\
+                --entrypoint='' --user root \\
+                ${env.imageName}:latest dartboard --dart dartboard/${env.renderedDartFile} deploy
+            """
           }
         }
     }
@@ -145,9 +155,14 @@ pipeline {
               def k6TestCommand = fileExists("dartboard/${env.k6EnvFile}") ? "set -o allexport; source ${env.k6EnvFile}; set +o allexport; ${k6BaseCommand}" : k6BaseCommand
 
               def names = generate.names()
-              def jobContainer = [name: names.container, image: "${env.imageName}:latest", envFile: "dartboard/${env.envFile}", tty: false, extraArgs: "--entrypoint='' --user root -v ${pwd()}:${pwd()} --workdir ${pwd()}"]
-              container.run(container: jobContainer, test: [command: [k6TestCommand]])
-              container.remove([[name: jobContainer.name]])
+              sh """
+                docker run --rm --name ${names.container} \\
+                  --workdir ${pwd()} \\
+                  -v ${pwd()}:${pwd()} \\
+                  --env-file dartboard/${env.envFile} \\
+                  --entrypoint='' --user root \\
+                  ${env.imageName}:latest /bin/sh -c '${k6TestCommand}'
+              """
             }
         }
     }
