@@ -140,6 +140,8 @@ pipeline {
                 echo "RENDERED DART:"
                 cat ${env.renderedDartFile}
             """
+          sh "echo 'OUTPUTTING SCRIPT'"
+          sh "cat ${renderScript}"
           sh """
             docker run --rm -v ${pwd()}:/home/ \\
             --workdir /home/ \\
