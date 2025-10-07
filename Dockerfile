@@ -9,7 +9,7 @@ WORKDIR $WORKSPACE
 COPY [".", "$WORKSPACE"]
 
 RUN apk update && \
-    apk add bash tar unzip wget curl make gettext
+    apk add bash tar unzip wget curl make
 
 RUN go mod download && \
     go mod tidy && \
@@ -29,7 +29,8 @@ RUN apk update && \
     apk add --no-cache \
     openssh-client \
     netcat-openbsd \
-    bash
+    bash \
+    gettext
 
 # switch back to the non-root user
 USER k6
