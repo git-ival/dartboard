@@ -108,7 +108,8 @@ pipeline {
           def names = generate.names()
           sh """
             docker run --rm --name ${names.container} \\
-              -v ${pwd()}:${pwd()} \\
+              -v ${pwd()}:/home/ \\
+              --workdir /home/ \\
               --env-file dartboard/${env.envFile} \\
               --entrypoint='' --user root \\
               ${env.imageName}:latest /bin/sh -c '${sshScript}'
@@ -139,7 +140,8 @@ pipeline {
             cat ${env.renderedDartFile}
           """
           sh """
-            docker run --rm -v ${pwd()}:${pwd()} \\
+            docker run --rm -v ${pwd()}:/home/ \\
+            --workdir /home/ \\
             --env-file dartboard/${env.envFile} \\
             --entrypoint='' --user root ${env.imageName}:latest \\
             /bin/sh -c '${renderScript}'
@@ -154,7 +156,8 @@ pipeline {
             def names = generate.names()
             sh """
               docker run --rm --name ${names.container} \\
-                -v ${pwd()}:${pwd()} \\
+                -v ${pwd()}:/home/ \\
+                --workdir /home/ \\
                 --env-file dartboard/${env.envFile} \\
                 --entrypoint='' --user root \\
                 ${env.imageName}:latest dartboard \\
@@ -173,7 +176,8 @@ pipeline {
               def names = generate.names()
               sh """
                 docker run --rm --name ${names.container} \\
-                  -v ${pwd()}:${pwd()} \\
+                  -v ${pwd()}:/home/ \\
+                  --workdir /home/ \\
                   --env-file dartboard/${env.envFile} \\
                   --entrypoint='' --user root \\
                   ${env.imageName}:latest /bin/sh -c '${k6TestCommand}'
