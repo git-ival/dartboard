@@ -267,11 +267,23 @@ resource "aws_vpc_security_group_ingress_rule" "public_udp_weave" {
   ip_protocol       = "udp"
 }
 
+resource "aws_vpc_security_group_ingress_rule" "public_k8s_cidrs" {
+  for_each = toset([
+    "3.0.0.0/8", "52.0.0.0/8", "13.0.0.0/8", "18.0.0.0/8", "54.0.0.0/8", local.myip
+  ])
+  description       = "K8s API from Approved CIDR ranges (${each.value})"
+  from_port         = 6443
+  to_port           = 6443
+  ip_protocol       = "tcp"
+  cidr_ipv4         = each.value
+  security_group_id = aws_security_group.public.id
+}
 
 resource "aws_vpc_security_group_ingress_rule" "public_k8s" {
-  description       = "Allow all traffic to k8s API port"
+  count             = var.ssh_prefix_list != null ? 1 : 0
+  description       = "Allow traffic from prefix-list IPs to k8s API port"
   security_group_id = aws_security_group.public.id
-  cidr_ipv4         = "0.0.0.0/0"
+  prefix_list_id    = data.aws_ec2_managed_prefix_list.this[0].id
   from_port         = 6443
   to_port           = 6443
   ip_protocol       = "tcp"
