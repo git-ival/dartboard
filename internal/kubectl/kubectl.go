@@ -381,6 +381,8 @@ func K6run(kubeconfig, testPath string, envVars, tags map[string]string, printLo
 	if record {
 		args = append(args, "-o", "experimental-prometheus-rw")
 	}
+	// Always disable color output for cleaner logs in CI
+	args = append(args, "--no-color")
 
 	// prepare volumes and volume mounts
 	volumes := []any{
