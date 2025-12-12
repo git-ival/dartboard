@@ -229,6 +229,18 @@ pipeline {
                   else
                     echo "Warning: No OpenTofu state zip file found in S3 artifacts."
                   fi
+
+                  config_zip=\$(find \${artifactsDir} -name '*_config.zip' | head -n 1)
+                  if [ -n "\$config_zip" ]; then
+                    configDirName=\$(basename "\$config_zip" .zip)
+                    configDestDir="${tofuMainDirFromDart}/\${configDirName}"
+                    echo "Extracting config archive: \$config_zip to \${configDestDir}"
+                    mkdir -p "\${configDestDir}"
+                    unzip -o "\$config_zip" -d "\${configDestDir}"
+                  else
+                    echo "Warning: No config zip file found in S3 artifacts."
+                  fi
+
               """
               sh "docker exec --user=\$(id -u) --workdir /dartboard ${runningContainerName} sh -c '${restoreScript}'"
               sh "rm -rf ${artifactsDir}"
