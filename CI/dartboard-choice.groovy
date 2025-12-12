@@ -298,7 +298,7 @@ EOF
             sh "docker exec --user=\$(id -u) --workdir /dartboard ${runningContainerName} sh -c 'dartboard --dart ${env.renderedDartFile} get-access > ${env.accessDetailsLog}'"
           } else {
             def dartboardCmd = """
-              docker exec --user=\$(id -u) --workdir /dartboard ${runningContainerName} dartboard \\
+              docker exec -t --user=\$(id -u) --workdir /dartboard ${runningContainerName} dartboard \\
                 --dart ${env.renderedDartFile} ${command}
             """
             // Retry on infrastructure setup commands
