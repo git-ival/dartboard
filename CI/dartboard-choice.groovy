@@ -253,13 +253,14 @@ pipeline {
     stage('Prepare Parameter Files') {
       steps {
         script {
-          property.useWithCredentials(['ADMIN_PASSWORD']) {
+          property.useWithCredentials(['ADMIN_PASSWORD', 'USER_PASSWORD']) {
             // Render the Dart file using Groovy string replacement
             def dartTemplate = params.DART_FILE
             def renderedDart = dartTemplate.replaceAll('\\$\\{HARVESTER_KUBECONFIG\\}', "/dartboard/${env.harvesterKubeconfig}")
                                             .replaceAll('\\$\\{SSH_KEY_NAME\\}', "/dartboard/${finalSSHKeyName}")
                                             .replaceAll('\\$\\{PROJECT_NAME\\}', finalProjectName)
                                             .replaceAll('\\$\\{ADMIN_PASSWORD\\}', ADMIN_PASSWORD)
+                                            .replaceAll('\\$\\{USER_PASSWORD\\}', USER_PASSWORD)
 
             // Use docker exec to write all parameter files to the container
             sh """
