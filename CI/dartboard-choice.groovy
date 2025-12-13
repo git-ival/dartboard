@@ -142,7 +142,7 @@ pipeline {
         script {
           def command = params.DARTBOARD_COMMAND ?: 'redeploy'
           // Only set up SSH keys for commands that actually need them for provisioning.
-          def sshRequiredCommands = ['redeploy', 'deploy', 'apply', 'reapply']
+          def sshRequiredCommands = ['redeploy', 'deploy', 'apply', 'reapply', 'destroy']
 
           if (command in sshRequiredCommands) {
             def sshScript = """
