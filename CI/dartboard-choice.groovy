@@ -63,7 +63,7 @@ pipeline {
 
             def command = params.DARTBOARD_COMMAND ?: 'redeploy'
             // Commands that create/modify infrastructure require SSH keys for node provisioning.
-            def sshRequiredCommands = ['redeploy', 'deploy', 'apply', 'reapply']
+            def sshRequiredCommands = ['redeploy', 'deploy', 'apply', 'reapply', 'destroy']
             if (command in sshRequiredCommands && (!finalSSHPemKey || !finalSSHKeyName)) {
               error("The '${command}' command requires SSH keys. Please provide both 'SSH_PEM_KEY' and 'SSH_KEY_NAME' parameters, or ensure corresponding credentials (AWS_SSH_PEM_KEY, AWS_SSH_PEM_KEY_NAME) are available.")
             }
@@ -303,7 +303,7 @@ EOF
                 --dart ${env.renderedDartFile} ${command}
             """
             // Retry on infrastructure setup commands
-            if (command in ['redeploy', 'deploy', 'apply', 'reapply']) {
+            if (command in ['redeploy', 'deploy', 'apply', 'reapply', 'destroy']) {
               retry(3) {
                 sh dartboardCmd
               }
