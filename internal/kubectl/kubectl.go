@@ -413,7 +413,7 @@ func K6run(kubeconfig, testPath string, envVars, tags map[string]string, printLo
 					"stdin":      true,
 					"tty":        true,
 					"args":       args,
-					"workingDir": "/",
+					"workingDir": "/tmp",
 					"env": []any{
 						map[string]any{"name": "K6_PROMETHEUS_RW_SERVER_URL", "value": mimirURL + "/api/v1/push"},
 						map[string]any{"name": "K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM", "value": "true"},
