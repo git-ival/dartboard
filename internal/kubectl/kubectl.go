@@ -377,7 +377,8 @@ func K6run(kubeconfig, testPath string, envVars, tags map[string]string, printLo
 	for k, v := range tags {
 		args = append(args, "--tag", fmt.Sprintf("%s=%s", k, v))
 	}
-	args = append(args, relTestPath)
+	// Use an absolute path for the test script to avoid issues with workingDir
+	args = append(args, "/"+relTestPath)
 	if record {
 		args = append(args, "-o", "experimental-prometheus-rw")
 	}
