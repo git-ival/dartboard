@@ -327,21 +327,21 @@ func chartInstallRancher(r *dart.Dart, rancherImageTag string, cluster *tofu.Clu
 
 		// otherwise, if one of "alpha", or "latest"
 		if strings.Contains(r.ChartVariables.RancherVersion, "alpha") {
-			rancherRepo = baseRepo + "alpha"
+			rancherRepo = baseRepo + "alpha/rancher-"
 		} else {
-			rancherRepo = baseRepo + "latest"
+			rancherRepo = baseRepo + "latest/rancher-"
 		}
 
 		// "prime"
 		if r.ChartVariables.ForcePrimeRegistry {
-			rancherRepo = "https://charts.rancher.com/server-charts/prime"
+			rancherRepo = "https://charts.rancher.com/server-charts/prime/rancher-"
 		}
 	}
 
 	chartRancher := chart{
 		name:      "rancher",
 		namespace: "cattle-system",
-		path:      rancherRepo + "/rancher-" + r.ChartVariables.RancherVersion + ".tgz",
+		path:      rancherRepo + r.ChartVariables.RancherVersion + ".tgz",
 	}
 
 	clusterAdd, err := getAppAddressFor(*cluster)
@@ -633,12 +633,14 @@ func getRancherValsJSON(rancherImageOverride, rancherImageTag, bootPwd, hostname
 		"bootstrapPassword": bootPwd,
 		"hostname":          hostname,
 		"replicas":          replicas,
-		"rancherImageTag":   rancherImageTag,
+		"image":             map[string]any{"tag": rancherImageTag},
 		"extraEnv":          extraEnv,
 		"livenessProbe": map[string]any{
 			"initialDelaySeconds": 30,
 			"periodSeconds":       3600,
 		},
+		"fullnameOverride": "rancher",
+		"nameOverride":     "rancher",
 	}
 
 	if rancherImageOverride != "" {
