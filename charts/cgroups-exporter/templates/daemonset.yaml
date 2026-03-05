@@ -61,5 +61,5 @@ spec:
         - name: host-host-sys
           hostPath:
             path: /host/sys
-            type: DirectoryOrCreate
+            type: Directory
         {{- end }}
