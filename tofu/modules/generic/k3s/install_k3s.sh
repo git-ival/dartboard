@@ -3,7 +3,7 @@
 set -xe
 
 # disable firewalld to avoid conflicts with k3s' embedded flannel
-systemctl disable firewalld --now
+systemctl disable firewalld --now 2>/dev/null || true
 
 # use data disk if available (see mount_ephemeral.sh)
 if [ -d /data ]; then
