@@ -2,6 +2,9 @@
 
 set -xe
 
+# disable firewalld to avoid conflicts with k3s' embedded flannel
+systemctl disable firewalld --now
+
 # use data disk if available (see mount_ephemeral.sh)
 if [ -d /data ]; then
   mkdir -p /data/rancher
@@ -65,9 +68,18 @@ kind: KubeletConfiguration
 maxPods: ${max_pods}
 EOF
 
+cat >>/root/.bash_profile <<EOF
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+EOF
+
+cat >>/root/.bashrc <<EOF
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+EOF
+
 # installation
 export INSTALL_K3S_VERSION=${distro_version}
 export INSTALL_K3S_EXEC=${exec}
+export K3S_KUBECONFIG_MODE="644"
 
 MAX_RETRIES=5
 RETRY_DELAY=5 # seconds

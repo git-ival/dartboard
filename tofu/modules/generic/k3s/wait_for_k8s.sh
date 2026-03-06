@@ -2,6 +2,8 @@
 
 set -xe
 
+source /root/.bash_profile
+
 WAITSECS=${WAITSECS:-"2"}
 KUBECTL=${KUBECTL:-"/usr/local/bin/kubectl"}
 

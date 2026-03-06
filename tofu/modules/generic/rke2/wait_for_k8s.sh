@@ -4,10 +4,16 @@ set -xe
 
 source /root/.bash_profile
 
-while ! kubectl get services
+WAITSECS=${WAITSECS:-"2"}
+
+for i in {1..20}
 do
-  echo "Waiting for k8s API to be up..."
-  sleep 3
+  if kubectl get services
+  then
+    exit 0
+  fi
+  echo "Waiting another ${WAITSECS} seconds for k8s API to be up..."
+  sleep $WAITSECS
 done
 
 echo "Waiting for the RKE2 ingress controller to be up..."
