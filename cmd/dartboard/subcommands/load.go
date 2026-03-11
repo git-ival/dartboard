@@ -161,6 +161,14 @@ func handleK6RunError(err error, message string) error {
 		return nil
 	}
 
+	// The k6 pod will exit with an error if thresholds are crossed.
+	// We can inspect the error message for the specific k6 threshold error string,
+	// which is included in the output from the `kubectl run` command.
+	if strings.Contains(err.Error(), "thresholds on metrics") && strings.Contains(err.Error(), "have been crossed") {
+		log.Printf("k6 thresholds exceeded (detected via error string) for %s, continuing...", message)
+		return nil
+	}
+
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		log.Printf("k6 run error for %s: %v (%v)\n", message, err, exitErr)
