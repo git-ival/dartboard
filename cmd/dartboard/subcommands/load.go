@@ -163,11 +163,14 @@ func handleK6RunError(err error, message string) error {
 
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
+		log.Printf("k6 run error for %s: %v (%v)\n", message, err, exitErr)
 		// k6 exits with 99 on threshold failures. This is not a fatal error for the load command.
 		if exitErr.ExitCode() == K6_THRESHOLDS_EXCEEDED_EXIT_CODE {
 			log.Printf("k6 thresholds exceeded (exit code %d) for %s, continuing...", K6_THRESHOLDS_EXCEEDED_EXIT_CODE, message)
 			return nil
 		}
+	} else {
+		log.Printf("k6 run error for %s: %v\n", message, err)
 	}
 
 	// Fallback: Check error string in case error wrapping prevented errors.As from working
