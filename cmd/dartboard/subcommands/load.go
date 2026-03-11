@@ -17,8 +17,10 @@ limitations under the License.
 package subcommands
 
 import (
+	"errors"
 	"fmt"
 	"log"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -27,6 +29,8 @@ import (
 	"github.com/rancher/dartboard/internal/tofu"
 	cli "github.com/urfave/cli/v2"
 )
+
+const K6_THRESHOLDS_EXCEEDED_EXIT_CODE int = 99
 
 // TODO: Make this command idempotent. Get count (# of resources) matching some unique identifier.
 // Then rerun the appropriate script, passing in the index to leave off on.
@@ -55,18 +59,21 @@ func Load(cli *cli.Context) error {
 			continue
 		}
 
-		if err := loadConfigMapAndSecrets(r, tester.Kubeconfig, clusterName, clusterData); err != nil {
-			return err
+		err = loadConfigMapAndSecrets(r, tester.Kubeconfig, clusterName, clusterData)
+		if k6err := handleK6RunError(err, fmt.Sprintf("loading ConfigMaps and Secrets on cluster %q", clusterName)); k6err != nil {
+			return k6err
 		}
 	}
 
 	// Create Users and Roles
-	if err := loadRolesAndUsers(r, tester.Kubeconfig, "upstream", clusters["upstream"]); err != nil {
-		return err
+	err = loadRolesAndUsers(r, tester.Kubeconfig, "upstream", clusters["upstream"])
+	if k6err := handleK6RunError(err, "loading Roles and Users on cluster \"upstream\""); k6err != nil {
+		return k6err
 	}
 	// Create Projects
-	if err := loadProjects(r, tester.Kubeconfig, "upstream", clusters["upstream"]); err != nil {
-		return err
+	err = loadProjects(r, tester.Kubeconfig, "upstream", clusters["upstream"])
+	if k6err := handleK6RunError(err, "loading Projects on cluster \"upstream\""); k6err != nil {
+		return k6err
 	}
 
 	return nil
@@ -92,11 +99,7 @@ func loadConfigMapAndSecrets(r *dart.Dart, kubeconfig string, clusterName string
 
 	log.Printf("Load resources on cluster %q (#ConfigMaps: %s, #Secrets: %s)\n", clusterName, configMapCount, secretCount)
 
-	if err := kubectl.K6run(kubeconfig, "generic/create_k8s_resources.js", envVars, tags, true, clusterData.KubernetesAddresses.Tunnel, false); err != nil {
-		return fmt.Errorf("failed loading ConfigMaps and Secrets on cluster %q: %w", clusterName, err)
-	}
-
-	return nil
+	return kubectl.K6run(kubeconfig, "generic/create_k8s_resources.js", envVars, tags, true, clusterData.KubernetesAddresses.Tunnel, false)
 }
 
 func loadRolesAndUsers(r *dart.Dart, kubeconfig string, clusterName string, clusterData tofu.Cluster) error {
@@ -125,11 +128,7 @@ func loadRolesAndUsers(r *dart.Dart, kubeconfig string, clusterName string, clus
 
 	log.Printf("Load resources on cluster %q (#Roles: %s, #Users: %s)\n", clusterName, roleCount, userCount)
 
-	if err := kubectl.K6run(kubeconfig, "generic/create_roles_users.js", envVars, tags, true, clusterAdd.Local.HTTPSURL, false); err != nil {
-		return fmt.Errorf("failed loading Roles and Users on cluster %q: %w", clusterName, err)
-	}
-
-	return nil
+	return kubectl.K6run(kubeconfig, "generic/create_roles_users.js", envVars, tags, true, clusterAdd.Local.HTTPSURL, false)
 }
 
 func loadProjects(r *dart.Dart, kubeconfig string, clusterName string, clusterData tofu.Cluster) error {
@@ -154,9 +153,22 @@ func loadProjects(r *dart.Dart, kubeconfig string, clusterName string, clusterDa
 
 	log.Printf("Load resources on cluster %q (#Projects: %s)\n", clusterName, projectCount)
 
-	if err := kubectl.K6run(kubeconfig, "generic/create_projects.js", envVars, tags, true, clusterAdd.Local.HTTPSURL, false); err != nil {
-		return fmt.Errorf("failed loading Projects on cluster %q: %w", clusterName, err)
+	return kubectl.K6run(kubeconfig, "generic/create_projects.js", envVars, tags, true, clusterAdd.Local.HTTPSURL, false)
+}
+
+func handleK6RunError(err error, message string) error {
+	if err == nil {
+		return nil
 	}
 
-	return nil
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		// k6 exits with 99 on threshold failures. This is not a fatal error for the load command.
+		if exitErr.ExitCode() == K6_THRESHOLDS_EXCEEDED_EXIT_CODE {
+			log.Printf("k6 thresholds exceeded (exit code %d) for %s, continuing...", K6_THRESHOLDS_EXCEEDED_EXIT_CODE, message)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("failed %s: %w", message, err)
 }
