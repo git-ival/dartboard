@@ -19,6 +19,7 @@ package kubectl
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -49,6 +50,8 @@ var (
 	cachedEntries []FileEntry
 	cacheErr      error
 )
+
+var ErrThresholdsExceeded = errors.New("k6 thresholds exceeded")
 
 // collectFileEntries walks the directory tree at `root`, follows symlinks,
 // and returns FileEntry objects for files whose extensions are present in `exts`.
@@ -465,13 +468,21 @@ func K6run(kubeconfig, testPath string, envVars, tags map[string]string, printLo
 		return err
 	}
 
-	var output *os.File
+	var output io.Writer
+	var logBuffer bytes.Buffer
 	if printLogs {
-		output = os.Stdout
+		output = io.MultiWriter(os.Stdout, &logBuffer)
+	} else {
+		output = &logBuffer
 	}
 
 	err = Exec(kubeconfig, output, "run", "k6", "--image="+k6Image, "--namespace=tester", "--rm", "--stdin", "--restart=Never", "--overrides="+string(overrideJSON))
+	// If the command failed, check if it was due to thresholds
 	if err != nil {
+		logs := logBuffer.String()
+		if strings.Contains(logs, "thresholds on metrics") && strings.Contains(logs, "have been crossed") {
+			return ErrThresholdsExceeded
+		}
 		return err
 	}
 

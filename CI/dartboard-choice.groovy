@@ -309,13 +309,6 @@ EOF
               retry(3) {
                 sh dartboardCmd
               }
-            } else if (command == 'load') {
-              def exitCode = sh(script: dartboardCmd, returnStatus: true)
-              if (exitCode == 99) {
-                echo "k6 thresholds exceeded (exit code 99). Continuing..."
-              } else if (exitCode != 0) {
-                error("'dartboard ${command}' failed with exit code: ${exitCode}")
-              }
             } else {
               sh dartboardCmd
             }

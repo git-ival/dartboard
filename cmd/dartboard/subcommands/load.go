@@ -30,8 +30,6 @@ import (
 	cli "github.com/urfave/cli/v2"
 )
 
-const K6_THRESHOLDS_EXCEEDED_EXIT_CODE int = 99
-
 // TODO: Make this command idempotent. Get count (# of resources) matching some unique identifier.
 // Then rerun the appropriate script, passing in the index to leave off on.
 // * Scripts need to support this type of idempotency, they currently do not
@@ -161,30 +159,14 @@ func handleK6RunError(err error, message string) error {
 		return nil
 	}
 
-	// The k6 pod will exit with an error if thresholds are crossed.
-	// We can inspect the error message for the specific k6 threshold error string,
-	// which is included in the output from the `kubectl run` command.
-	if strings.Contains(err.Error(), "thresholds on metrics") && strings.Contains(err.Error(), "have been crossed") {
-		log.Printf("k6 thresholds exceeded (detected via error string) for %s, continuing...", message)
+	if errors.Is(err, kubectl.ErrThresholdsExceeded) {
+		log.Printf("k6 thresholds exceeded for %s, continuing...", message)
 		return nil
 	}
 
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		log.Printf("k6 run error for %s: %v (%v)\n", message, err, exitErr)
-		// k6 exits with 99 on threshold failures. This is not a fatal error for the load command.
-		if exitErr.ExitCode() == K6_THRESHOLDS_EXCEEDED_EXIT_CODE {
-			log.Printf("k6 thresholds exceeded (exit code %d) for %s, continuing...", K6_THRESHOLDS_EXCEEDED_EXIT_CODE, message)
-			return nil
-		}
-	} else {
-		log.Printf("k6 run error for %s: %v\n", message, err)
-	}
-
-	// Fallback: Check error string in case error wrapping prevented errors.As from working
-	if strings.Contains(err.Error(), fmt.Sprintf("exit status %d", K6_THRESHOLDS_EXCEEDED_EXIT_CODE)) {
-		log.Printf("k6 thresholds exceeded (detected via error string) for %s, continuing...", message)
-		return nil
 	}
 
 	return fmt.Errorf("failed %s: %w", message, err)
