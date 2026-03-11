@@ -170,5 +170,11 @@ func handleK6RunError(err error, message string) error {
 		}
 	}
 
+	// Fallback: Check error string in case error wrapping prevented errors.As from working
+	if strings.Contains(err.Error(), fmt.Sprintf("exit status %d", K6_THRESHOLDS_EXCEEDED_EXIT_CODE)) {
+		log.Printf("k6 thresholds exceeded (detected via error string) for %s, continuing...", message)
+		return nil
+	}
+
 	return fmt.Errorf("failed %s: %w", message, err)
 }
