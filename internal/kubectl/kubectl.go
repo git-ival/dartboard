@@ -348,6 +348,33 @@ func GetStatus(kubepath, kind, name, namespace string) (map[string]any, error) {
 	return out, nil
 }
 
+// buildK6PodOverride constructs the JSON-serialisable pod-override map used by
+// `kubectl run --overrides` to configure the k6 test runner pod.
+func buildK6PodOverride(args []string, volumes, volumeMounts []any) map[string]any {
+	return map[string]any{
+		"apiVersion": "v1",
+		"spec": map[string]any{
+			"containers": []any{
+				map[string]any{
+					"name":       "k6",
+					"image":      k6Image,
+					"stdin":      true,
+					"tty":        true,
+					"args":       args,
+					"workingDir": "/tmp",
+					"env": []any{
+						map[string]any{"name": "K6_PROMETHEUS_RW_SERVER_URL", "value": mimirURL + "/api/v1/push"},
+						map[string]any{"name": "K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM", "value": "true"},
+						map[string]any{"name": "K6_PROMETHEUS_RW_STALE_MARKERS", "value": "true"},
+					},
+					"volumeMounts": volumeMounts,
+				},
+			},
+			"volumes": volumes,
+		},
+	}
+}
+
 func K6run(kubeconfig, testPath string, envVars, tags map[string]string, printLogs bool, localBaseURL string, record bool) error {
 	// gather file entries
 	root := "./charts/k6-files/test-files"
@@ -440,36 +467,18 @@ func K6run(kubeconfig, testPath string, envVars, tags map[string]string, printLo
 	}
 
 	// prepare pod override map
-	override := map[string]any{
-		"apiVersion": "v1",
-		"spec": map[string]any{
-			"containers": []any{
-				map[string]any{
-					"name":       "k6",
-					"image":      k6Image,
-					"stdin":      true,
-					"tty":        true,
-					"args":       args,
-					"workingDir": "/tmp",
-					"env": []any{
-						map[string]any{"name": "K6_PROMETHEUS_RW_SERVER_URL", "value": mimirURL + "/api/v1/push"},
-						map[string]any{"name": "K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM", "value": "true"},
-						map[string]any{"name": "K6_PROMETHEUS_RW_STALE_MARKERS", "value": "true"},
-					},
-					"volumeMounts": volumeMounts,
-				},
-			},
-			"volumes": volumes,
-		},
-	}
+	override := buildK6PodOverride(args, volumes, volumeMounts)
 
 	overrideJSON, err := json.Marshal(override)
 	if err != nil {
 		return err
 	}
 
-	var output io.Writer
-	var logBuffer bytes.Buffer
+	var (
+		output    io.Writer
+		logBuffer bytes.Buffer
+	)
+
 	if printLogs {
 		output = io.MultiWriter(os.Stdout, &logBuffer)
 	} else {
@@ -483,6 +492,7 @@ func K6run(kubeconfig, testPath string, envVars, tags map[string]string, printLo
 		if strings.Contains(logs, "thresholds on metrics") && strings.Contains(logs, "have been crossed") {
 			return ErrThresholdsExceeded
 		}
+
 		return err
 	}
 
