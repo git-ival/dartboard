@@ -122,10 +122,7 @@ pipeline {
             env.K6_SUMMARY_LOG = "${testFileBasename}-k6-summary.log"
             def k6SummaryJsonFile = "${testFileBasename}-summary.json"
             def k6ReportHtmlFile = "${testFileBasename}-summary.html"
-<<<<<<< HEAD
             def k6WebDashboardReport = "${testFileBasename}-web-dashboard.html"
-=======
->>>>>>> e0801e7c (k6-runner fix report file naming)
 
 
             // Create the k6 environment file on the agent first.
