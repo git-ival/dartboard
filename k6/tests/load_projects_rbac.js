@@ -368,7 +368,7 @@ function collectAPITimings(cookies, phase, user) {
 function getProjectWithRetry(baseUrl, cookies, projectId, maxRetries = 5) {
   for (let retry = 0; retry < maxRetries; retry++) {
     let { res, project } = projectUtil.getProject(baseUrl, cookies, projectId)
-    if (res.status == 200 && project && project.status.conditions) {
+    if (res.status == 200 && project?.metadata?.name) {
       return project
     }
     console.warn(`GET Project attempt #${retry + 1} failed with status ${res.status}`)
