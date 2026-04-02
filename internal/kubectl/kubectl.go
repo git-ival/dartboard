@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	k6Image          = "grafana/k6:1.4.0"
+	k6Image          = "grafana/k6:1.7.1"
 	K6Namespace      = "tester"
 	K6KubeSecretName = "kube"
 	mimirURL         = "http://mimir.tester:9009/mimir"
