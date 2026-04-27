@@ -32,10 +32,10 @@ type ImportJob struct {
 func (j ImportJob) Name() string { return j.Cluster.Name }
 
 // IsCompleted checks if import has already been done
-func (j ImportJob) IsCompleted(status *ClusterStatus) bool { return status.Imported }
+func (j ImportJob) IsCompleted(status *ClusterStatus) bool { return status.IsImported() }
 
 // MarkCompleted marks the import as done
-func (j ImportJob) MarkCompleted(status *ClusterStatus) { status.Imported = true }
+func (j ImportJob) MarkCompleted(status *ClusterStatus) { status.Stage = StageImported }
 
 // FinalStage returns the final stage after import
 func (j ImportJob) FinalStage() Stage { return StageImported }
@@ -54,7 +54,7 @@ func (j ImportJob) Execute(ctx context.Context, client *rancher.Client, config *
 	}
 
 	// Create the cluster object in Rancher
-	updatedCluster, err := createAndWaitForCluster(client, config, importCluster)
+	updatedCluster, err := createAndWaitForCluster(ctx, client, config, importCluster)
 	if err != nil {
 		return fmt.Errorf("failed to create cluster %s: %w", cluster.Name, err)
 	}
@@ -62,7 +62,7 @@ func (j ImportJob) Execute(ctx context.Context, client *rancher.Client, config *
 	logrus.Infof("Cluster %s created, now importing...", cluster.Name)
 
 	// Perform the actual import
-	updatedCluster, err = performClusterImport(client, cluster, importCluster)
+	updatedCluster, err = performClusterImport(ctx, client, cluster, importCluster)
 	if err != nil {
 		return fmt.Errorf("failed to import cluster %s: %w", cluster.Name, err)
 	}
@@ -92,10 +92,10 @@ type ProvisionJob struct {
 func (j ProvisionJob) Name() string { return j.Template.GeneratedName() }
 
 // IsCompleted checks if provisioning has already been done
-func (j ProvisionJob) IsCompleted(status *ClusterStatus) bool { return status.Provisioned }
+func (j ProvisionJob) IsCompleted(status *ClusterStatus) bool { return status.IsProvisioned() }
 
 // MarkCompleted marks the provisioning as done
-func (j ProvisionJob) MarkCompleted(status *ClusterStatus) { status.Provisioned = true }
+func (j ProvisionJob) MarkCompleted(status *ClusterStatus) { status.Stage = StageProvisioned }
 
 // FinalStage returns the final stage after provisioning
 func (j ProvisionJob) FinalStage() Stage { return StageProvisioned }
@@ -159,10 +159,10 @@ type RegisterJob struct {
 func (j RegisterJob) Name() string { return j.Template.Name }
 
 // IsCompleted checks if registration has already been done
-func (j RegisterJob) IsCompleted(status *ClusterStatus) bool { return status.Registered }
+func (j RegisterJob) IsCompleted(status *ClusterStatus) bool { return status.IsRegistered() }
 
 // MarkCompleted marks the registration as done
-func (j RegisterJob) MarkCompleted(status *ClusterStatus) { status.Registered = true }
+func (j RegisterJob) MarkCompleted(status *ClusterStatus) { status.Stage = StageRegistered }
 
 // FinalStage returns the final stage after registration
 func (j RegisterJob) FinalStage() Stage { return StageRegistered }
@@ -205,7 +205,7 @@ func (j RegisterJob) Execute(ctx context.Context, client *rancher.Client, config
 	// Retry registration if SSH handshake fails
 	var clusterObject *v1.SteveAPIObject
 
-	err = BackoffWait(20, func() (bool, error) {
+	err = BackoffWaitWithContext(ctx, 20, func(ctx context.Context) (bool, error) {
 		var regErr error
 
 		clusterObject, regErr = RegisterCustomCluster(client, clusterResp, provCluster, template.Nodes)

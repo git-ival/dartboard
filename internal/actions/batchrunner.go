@@ -10,8 +10,11 @@ import (
 	"github.com/rancher/shepherd/clients/rancher"
 	shepherddefaults "github.com/rancher/shepherd/extensions/defaults"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sync/errgroup"
 )
+
+// ClientFactory creates a new Rancher client for each goroutine, ensuring
+// thread safety since *rancher.Client is not safe for concurrent use.
+type ClientFactory func() (*rancher.Client, error)
 
 // ClusterJob defines the interface for any cluster operation that can be
 // executed concurrently. Each job type (import, provision, register) implements
@@ -30,28 +33,34 @@ type ClusterJob interface {
 }
 
 // BatchRunner processes cluster jobs concurrently with state tracking.
-// It uses the errgroup pattern for clean error handling and context cancellation,
-// with a semaphore for limiting concurrency.
+// It uses a WaitGroup for goroutine lifecycle management, collecting all
+// errors rather than cancelling on the first failure. Concurrency is
+// limited with a semaphore.
 type BatchRunner struct {
-	maxWorkers int
-	statePath  string
-	stateMu    sync.Mutex
-	statuses   map[string]*ClusterStatus
+	statuses      map[string]*ClusterStatus
+	clientFactory ClientFactory
+	config        *rancher.Config
+	statePath     string
+	maxWorkers    int
+	stateMu       sync.Mutex
 }
 
-// NewBatchRunner creates a runner with sensible defaults
-func NewBatchRunner(statePath string, statuses map[string]*ClusterStatus) *BatchRunner {
+// NewBatchRunner creates a runner with sensible defaults.
+// clientFactory is called once per goroutine to produce an isolated *rancher.Client.
+func NewBatchRunner(statePath string, statuses map[string]*ClusterStatus, clientFactory ClientFactory, config *rancher.Config) *BatchRunner {
 	return &BatchRunner{
-		maxWorkers: runtime.GOMAXPROCS(0) * 2,
-		statePath:  statePath,
-		statuses:   statuses,
+		maxWorkers:    runtime.GOMAXPROCS(0) * 2,
+		statePath:     statePath,
+		statuses:      statuses,
+		clientFactory: clientFactory,
+		config:        config,
 	}
 }
 
-// Run executes jobs concurrently using errgroup for clean error handling.
-// It limits concurrency using a semaphore pattern and tracks job state
-// for resumability.
-func (br *BatchRunner) Run(ctx context.Context, jobs []ClusterJob, client *rancher.Client, config *rancher.Config) error {
+// Run executes all jobs concurrently, collecting errors from all jobs before
+// returning. A single job failure does not cancel sibling jobs. Concurrency
+// is limited to maxWorkers via a semaphore.
+func (br *BatchRunner) Run(ctx context.Context, jobs []ClusterJob) error {
 	if len(jobs) == 0 {
 		return nil
 	}
@@ -59,21 +68,33 @@ func (br *BatchRunner) Run(ctx context.Context, jobs []ClusterJob, client *ranch
 	// Semaphore pattern for limiting concurrency
 	sem := make(chan struct{}, br.maxWorkers)
 
-	g, ctx := errgroup.WithContext(ctx)
-
-	skippedCount := 0
-	var skippedMu sync.Mutex
+	var (
+		wg           sync.WaitGroup
+		errMu        sync.Mutex
+		errs         []error
+		skippedMu    sync.Mutex
+		skippedCount int
+	)
 
 	for _, job := range jobs {
 		job := job // capture for goroutine
 
-		g.Go(func() error {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
 			// Acquire semaphore
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
 			case <-ctx.Done():
-				return ctx.Err()
+				errMu.Lock()
+
+				errs = append(errs, fmt.Errorf("job %s cancelled: %w", job.Name(), ctx.Err()))
+				errMu.Unlock()
+
+				return
 			}
 
 			// Initialize status and check if already completed
@@ -85,15 +106,31 @@ func (br *BatchRunner) Run(ctx context.Context, jobs []ClusterJob, client *ranch
 				skippedCount++
 				skippedMu.Unlock()
 
-				return nil
+				return
 			}
 
 			// Update state to show job started
 			br.updateState(job.Name(), StageNew)
 
+			// Create a per-goroutine client to avoid data races
+			client, err := br.clientFactory()
+			if err != nil {
+				errMu.Lock()
+
+				errs = append(errs, fmt.Errorf("job %s: failed to create client: %w", job.Name(), err))
+				errMu.Unlock()
+
+				return
+			}
+
 			// Execute the job
-			if err := job.Execute(ctx, client, config); err != nil {
-				return fmt.Errorf("job %s failed: %w", job.Name(), err)
+			if err := job.Execute(ctx, client, br.config); err != nil {
+				errMu.Lock()
+
+				errs = append(errs, fmt.Errorf("job %s failed: %w", job.Name(), err))
+				errMu.Unlock()
+
+				return
 			}
 
 			// Mark completed and persist
@@ -107,16 +144,17 @@ func (br *BatchRunner) Run(ctx context.Context, jobs []ClusterJob, client *ranch
 			br.stateMu.Unlock()
 
 			logrus.Infof("Cluster %s completed successfully", job.Name())
-
-			return nil
-		})
+		}()
 	}
 
-	if err := g.Wait(); err != nil {
-		return err
+	wg.Wait()
+
+	if len(errs) > 0 {
+		return joinErrors(errs)
 	}
 
-	// Batch sleep logic: if fewer than half were skipped, sleep before next batch
+	// Batch sleep logic: if fewer than half were skipped, sleep before next batch.
+	// This gives Rancher time to stabilize between bursts of cluster operations.
 	if skippedCount < len(jobs)/2 {
 		logrus.Infof("Batch done: %d/%d skipped; sleeping before next batch.", skippedCount, len(jobs))
 		time.Sleep(shepherddefaults.TwoMinuteTimeout)
@@ -135,7 +173,7 @@ func (br *BatchRunner) getOrCreateStatus(name string) *ClusterStatus {
 	return FindOrCreateStatusByName(br.statuses, name)
 }
 
-// updateState updates and persists cluster state (thread-safe)
+// updateState updates and persists cluster stage (thread-safe)
 func (br *BatchRunner) updateState(name string, stage Stage) {
 	br.stateMu.Lock()
 	defer br.stateMu.Unlock()
@@ -147,22 +185,31 @@ func (br *BatchRunner) updateState(name string, stage Stage) {
 
 	cs.Stage = stage
 
-	switch stage {
-	case StageNew:
-		cs.New = true
-	case StageInfra:
-		cs.Infra = true
-	case StageCreated:
-		cs.Created = true
-	case StageImported:
-		cs.Imported = true
-	case StageProvisioned:
-		cs.Provisioned = true
-	case StageRegistered:
-		cs.Registered = true
-	}
-
 	if err := SaveClusterState(br.statePath, br.statuses); err != nil {
 		logrus.Errorf("failed to save state for %s:%s: %v", name, stage, err)
 	}
+}
+
+// joinErrors combines multiple errors into a single error message.
+func joinErrors(errs []error) error {
+	msgs := make([]string, 0, len(errs))
+	for _, e := range errs {
+		msgs = append(msgs, e.Error())
+	}
+
+	return fmt.Errorf("%d job(s) failed:\n  - %s", len(errs), joinStrings(msgs, "\n  - "))
+}
+
+func joinStrings(ss []string, sep string) string {
+	result := ""
+
+	for i, s := range ss {
+		if i > 0 {
+			result += sep
+		}
+
+		result += s
+	}
+
+	return result
 }

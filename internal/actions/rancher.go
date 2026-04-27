@@ -3,7 +3,6 @@ package actions
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/rancher/dartboard/internal/dart"
 	"github.com/rancher/dartboard/internal/tofu"
@@ -14,6 +13,7 @@ import (
 	shepherdclusters "github.com/rancher/shepherd/extensions/clusters"
 	shepherdtokens "github.com/rancher/shepherd/extensions/token"
 	"github.com/rancher/shepherd/pkg/session"
+	"github.com/sirupsen/logrus"
 
 	"github.com/rancher/tests/actions/pipeline"
 
@@ -40,7 +40,7 @@ func SetupRancherClient(rancherConfig *rancher.Config, bootstrapPassword string,
 		Password: bootstrapPassword,
 	}
 
-	fmt.Printf("Rancher Config:\nHost: %s\nAdminPassword: %s\nAdminToken: %s\nInsecure: %t\n", rancherConfig.Host, rancherConfig.AdminPassword, rancherConfig.AdminToken, *rancherConfig.Insecure)
+	logrus.Infof("Rancher Config: Host=%s Insecure=%t", rancherConfig.Host, *rancherConfig.Insecure)
 
 	adminToken, err := shepherdtokens.GenerateUserToken(adminUser, rancherConfig.Host)
 	if err != nil {
@@ -67,13 +67,13 @@ func SetupRancherClient(rancherConfig *rancher.Config, bootstrapPassword string,
 	return client, err
 }
 
-func ProvisionDownstreamClusters(r *dart.Dart, templates []dart.ClusterTemplate, rancherClient *rancher.Client) error {
+func ProvisionDownstreamClusters(r *dart.Dart, rancherClient *rancher.Client, rancherConfig *rancher.Config) error {
 	if r.ClusterBatchSize <= 0 {
-		panic("ClusterBatchSize must be > 0")
+		return fmt.Errorf("ClusterBatchSize must be > 0, got %d", r.ClusterBatchSize)
 	}
 
 	for _, template := range r.ClusterTemplates {
-		err := ProvisionClustersInBatches(r, template, rancherClient)
+		err := ProvisionClustersInBatches(r, template, rancherClient, rancherConfig)
 		if err != nil {
 			return err
 		}
@@ -84,7 +84,7 @@ func ProvisionDownstreamClusters(r *dart.Dart, templates []dart.ClusterTemplate,
 
 // ProvisionClustersInBatches provisions clusters in batches for better resource management.
 // r.ClusterBatchSize determines the maximum concurrent clusters per batch.
-func ProvisionClustersInBatches(r *dart.Dart, template dart.ClusterTemplate, rancherClient *rancher.Client) error {
+func ProvisionClustersInBatches(r *dart.Dart, template dart.ClusterTemplate, rancherClient *rancher.Client, rancherConfig *rancher.Config) error {
 	clusterStatePath := fmt.Sprintf("%s/%s", r.TofuWorkspaceStatePath, ClustersStateFile)
 
 	statuses, err := LoadClusterState(clusterStatePath)
@@ -94,6 +94,9 @@ func ProvisionClustersInBatches(r *dart.Dart, template dart.ClusterTemplate, ran
 
 	ctx := context.Background()
 	batchNum := 0
+
+	factory := newClientFactory(rancherConfig, rancherClient.Session)
+	runner := NewBatchRunner(clusterStatePath, statuses, factory, rancherConfig)
 
 	for i := 0; i < template.ClusterCount; i += r.ClusterBatchSize {
 		end := min(i+r.ClusterBatchSize, template.ClusterCount)
@@ -106,9 +109,7 @@ func ProvisionClustersInBatches(r *dart.Dart, template dart.ClusterTemplate, ran
 			jobs = append(jobs, ProvisionJob{Template: templateCopy})
 		}
 
-		// Run batch
-		runner := NewBatchRunner(clusterStatePath, statuses)
-		if err := runner.Run(ctx, jobs, rancherClient, nil); err != nil {
+		if err := runner.Run(ctx, jobs); err != nil {
 			return err
 		}
 
@@ -120,19 +121,14 @@ func ProvisionClustersInBatches(r *dart.Dart, template dart.ClusterTemplate, ran
 
 func ImportDownstreamClusters(r *dart.Dart, clusters []tofu.Cluster, rancherClient *rancher.Client, rancherConfig *rancher.Config) error {
 	if r.ClusterBatchSize <= 0 {
-		panic("ClusterBatchSize must be > 0")
+		return fmt.Errorf("ClusterBatchSize must be > 0, got %d", r.ClusterBatchSize)
 	}
 
 	if len(clusters) == 0 {
-		fmt.Printf("No importable Clusters were provided.\n")
+		logrus.Info("No importable Clusters were provided.")
 	}
 
-	err := ImportClustersInBatches(r, clusters, rancherClient, rancherConfig)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return ImportClustersInBatches(r, clusters, rancherClient, rancherConfig)
 }
 
 // ImportClustersInBatches imports clusters in batches for better resource management.
@@ -146,6 +142,9 @@ func ImportClustersInBatches(r *dart.Dart, clusters []tofu.Cluster, rancherClien
 
 	ctx := context.Background()
 
+	factory := newClientFactory(rancherConfig, rancherClient.Session)
+	runner := NewBatchRunner(clusterStatePath, statuses, factory, rancherConfig)
+
 	for i := 0; i < len(clusters); i += r.ClusterBatchSize {
 		end := min(i+r.ClusterBatchSize, len(clusters))
 
@@ -155,9 +154,7 @@ func ImportClustersInBatches(r *dart.Dart, clusters []tofu.Cluster, rancherClien
 			jobs = append(jobs, ImportJob{Cluster: cluster})
 		}
 
-		// Run batch
-		runner := NewBatchRunner(clusterStatePath, statuses)
-		if err := runner.Run(ctx, jobs, rancherClient, rancherConfig); err != nil {
+		if err := runner.Run(ctx, jobs); err != nil {
 			return err
 		}
 	}
@@ -166,22 +163,18 @@ func ImportClustersInBatches(r *dart.Dart, clusters []tofu.Cluster, rancherClien
 }
 
 // createAndWaitForCluster creates a cluster and waits for it to be ready
-func createAndWaitForCluster(rancherClient *rancher.Client, rancherConfig *rancher.Config, importCluster *provv1.Cluster) (*provv1.Cluster, error) {
+func createAndWaitForCluster(ctx context.Context, rancherClient *rancher.Client, rancherConfig *rancher.Config, importCluster *provv1.Cluster) (*provv1.Cluster, error) {
 	if _, err := CreateK3SRKE2Cluster(rancherClient, rancherConfig, importCluster); err != nil {
 		return nil, fmt.Errorf("error while creating Steve Cluster with Name %s:\n%w", importCluster.Name, err)
 	}
 
-	err := BackoffWait(30, func() (finished bool, err error) {
+	err := BackoffWaitWithContext(ctx, 30, func(ctx context.Context) (bool, error) {
 		updatedCluster, _, err := shepherdclusters.GetProvisioningClusterByName(rancherClient, importCluster.Name, importCluster.Namespace)
 		if err != nil {
 			return false, fmt.Errorf("error while getting Cluster by Name %s in Namespace %s:\n%w", importCluster.Name, importCluster.Namespace, err)
 		}
 
-		if updatedCluster.Status.ClusterName != "" {
-			return true, nil
-		}
-
-		return false, nil
+		return updatedCluster.Status.ClusterName != "", nil
 	})
 	if err != nil {
 		return nil, err
@@ -196,7 +189,7 @@ func createAndWaitForCluster(rancherClient *rancher.Client, rancherConfig *ranch
 }
 
 // performClusterImport imports an external cluster into Rancher
-func performClusterImport(rancherClient *rancher.Client, cluster tofu.Cluster, importCluster *provv1.Cluster) (*provv1.Cluster, error) {
+func performClusterImport(ctx context.Context, rancherClient *rancher.Client, cluster tofu.Cluster, importCluster *provv1.Cluster) (*provv1.Cluster, error) {
 	restConfig, err := GetRESTConfigFromPath(cluster.Kubeconfig)
 	if err != nil {
 		return nil, err
@@ -210,14 +203,14 @@ func performClusterImport(rancherClient *rancher.Client, cluster tofu.Cluster, i
 		return nil, fmt.Errorf("error while getting Cluster by Name %s in Namespace %s:\n%w", importCluster.Name, importCluster.Namespace, err)
 	}
 
-	fmt.Printf("Importing Cluster, ID:%s Name:%s\n", updatedCluster.Status.ClusterName, updatedCluster.Name)
+	logrus.Infof("Importing Cluster, ID:%s Name:%s", updatedCluster.Status.ClusterName, updatedCluster.Name)
 
 	err = shepherdclusters.ImportCluster(rancherClient, updatedCluster, restConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating Job for importing Cluster %s:\n%w", updatedCluster.Name, err)
 	}
 
-	err = BackoffWait(100, func() (finished bool, err error) {
+	err = BackoffWaitWithContext(ctx, 100, func(ctx context.Context) (bool, error) {
 		updatedCluster, _, err = shepherdclusters.GetProvisioningClusterByName(rancherClient, importCluster.Name, importCluster.Namespace)
 		if err != nil {
 			return false, fmt.Errorf("error while getting Cluster by Name %s in Namespace %s:\n%w", importCluster.Name, importCluster.Namespace, err)
@@ -236,16 +229,16 @@ func RegisterCustomClusters(r *dart.Dart, templates []tofu.CustomCluster,
 	rancherClient *rancher.Client, rancherConfig *rancher.Config,
 ) error {
 	if r.ClusterBatchSize <= 0 {
-		panic("ClusterBatchSize must be > 0")
+		return fmt.Errorf("ClusterBatchSize must be > 0, got %d", r.ClusterBatchSize)
 	}
 
 	for _, template := range templates {
 		yamlData, err := yaml.Marshal(template)
 		if err != nil {
-			log.Fatalf("Error marshaling YAML: %v", err)
+			return fmt.Errorf("error marshaling CustomCluster YAML: %w", err)
 		}
 
-		fmt.Printf("\ntofu.CustomCluster:\n%s\n", string(yamlData))
+		logrus.Infof("\ntofu.CustomCluster:\n%s\n", string(yamlData))
 	}
 
 	for _, template := range templates {
@@ -268,8 +261,15 @@ func RegisterCustomClustersInBatches(r *dart.Dart, template tofu.CustomCluster, 
 	}
 
 	// Build all custom clusters from template
-	customClusters := make([]tofu.CustomCluster, 0, template.ClusterCount)
 	nodeBatchSize := len(template.Nodes) / template.ClusterCount
+	remainder := len(template.Nodes) % template.ClusterCount
+
+	if remainder != 0 {
+		logrus.Warnf("Node count %d is not evenly divisible by cluster count %d; %d node(s) will be unused",
+			len(template.Nodes), template.ClusterCount, remainder)
+	}
+
+	customClusters := make([]tofu.CustomCluster, 0, template.ClusterCount)
 
 	for i := range template.ClusterCount {
 		customCluster := template
@@ -280,6 +280,9 @@ func RegisterCustomClustersInBatches(r *dart.Dart, template tofu.CustomCluster, 
 
 	ctx := context.Background()
 
+	factory := newClientFactory(rancherConfig, rancherClient.Session)
+	runner := NewBatchRunner(clusterStatePath, statuses, factory, rancherConfig)
+
 	for i := 0; i < len(customClusters); i += r.ClusterBatchSize {
 		end := min(i+r.ClusterBatchSize, len(customClusters))
 
@@ -289,9 +292,7 @@ func RegisterCustomClustersInBatches(r *dart.Dart, template tofu.CustomCluster, 
 			jobs = append(jobs, RegisterJob{Template: cluster})
 		}
 
-		// Run batch
-		runner := NewBatchRunner(clusterStatePath, statuses)
-		if err := runner.Run(ctx, jobs, rancherClient, rancherConfig); err != nil {
+		if err := runner.Run(ctx, jobs); err != nil {
 			return err
 		}
 	}
@@ -314,4 +315,17 @@ func createMachinePools(template tofu.CustomCluster) []provv1.RKEMachinePool {
 	}
 
 	return machinePools
+}
+
+// newClientFactory returns a ClientFactory that creates a new *rancher.Client
+// per goroutine using the provided config and session.
+func newClientFactory(config *rancher.Config, sess *session.Session) ClientFactory {
+	return func() (*rancher.Client, error) {
+		client, err := rancher.NewClientForConfig(config.AdminToken, config, sess)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create rancher client: %w", err)
+		}
+
+		return client, nil
+	}
 }

@@ -9,19 +9,20 @@ import (
 )
 
 // ClusterStatus holds the state of each cluster.
+// Completion is derived from Stage; use the IsX() helpers instead of direct field access.
 type ClusterStatus struct {
-	Name        string `yaml:"name"`
-	New         bool   `yaml:"new"`
-	Infra       bool   `yaml:"infra"`
-	Created     bool   `yaml:"created"`
-	Imported    bool   `yaml:"imported"`
-	Provisioned bool   `yaml:"provisioned"`
-	Registered  bool   `yaml:"registered"`
-	Stage       Stage  `yaml:"stage"`
-	// // Only one of the following should be included
-	// tofu.Cluster         `yaml:"cluster,omitempty"`          //For Imported Clusters
-	// dart.ClusterTemplate `yaml:"cluster_template,omitempty"` //For Provisioned Clusters
+	Name  string `yaml:"name"`
+	Stage Stage  `yaml:"stage"`
 }
+
+// IsImported reports whether the cluster has reached at least StageImported.
+func (cs *ClusterStatus) IsImported() bool { return cs.Stage >= StageImported }
+
+// IsProvisioned reports whether the cluster has reached at least StageProvisioned.
+func (cs *ClusterStatus) IsProvisioned() bool { return cs.Stage >= StageProvisioned }
+
+// IsRegistered reports whether the cluster has reached at least StageRegistered.
+func (cs *ClusterStatus) IsRegistered() bool { return cs.Stage >= StageRegistered }
 
 const ClustersStateFile = "clusters_state.yaml"
 

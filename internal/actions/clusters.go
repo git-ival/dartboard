@@ -43,12 +43,6 @@ const (
 	psactRancherPrivileged string = "rancher-privileged"
 )
 
-// TODELETE:
-// type CustomClusterTemplate struct {
-// 	dart.ClusterTemplate
-// 	Nodes []tofu.Node `yaml:"nodes"`
-// }
-
 // ConvertConfigToClusterConfig converts the ClusterConfig from (user) input to a rancher/tests ClusterConfig
 func ConvertConfigToClusterConfig(config *dart.ClusterConfig) *rancherclusters.ClusterConfig {
 	var newConfig rancherclusters.ClusterConfig
@@ -205,7 +199,7 @@ func RegisterCustomCluster(client *rancher.Client, steveObject *v1.SteveAPIObjec
 	quantityPerPool := []int32{}
 	rolesPerPool := []string{}
 
-	fmt.Println("Building role oommand")
+	logrus.Debug("Building role command")
 
 	for _, pool := range cluster.Spec.RKEConfig.MachinePools {
 		var finalRoleCommand string
@@ -336,9 +330,9 @@ func setupClusterVerification(client *rancher.Client, config *rancher.Config, cl
 		return nil, err
 	}
 
-	fmt.Printf("\nRELOGIN CLIENT: %v\n", client)
-	fmt.Printf("\nRANCHER CONFIG: %v\n", config)
-	fmt.Printf("\nCLUSTER OBJECT: %v\n", cluster)
+	logrus.Debugf("RELOGIN CLIENT: %v", client)
+	logrus.Debugf("RANCHER CONFIG: %v", config)
+	logrus.Debugf("CLUSTER OBJECT: %v", cluster)
 
 	adminClient, err := rancher.NewClientForConfig(client.RancherConfig.AdminToken, config, client.Session)
 	if err != nil {

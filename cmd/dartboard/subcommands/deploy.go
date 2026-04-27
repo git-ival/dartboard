@@ -139,7 +139,7 @@ func Deploy(cli *cli.Context) error {
 
 		log.Printf("Provisioning Downstream Clusters")
 
-		if err = actions.ProvisionDownstreamClusters(r, r.ClusterTemplates, rancherClient); err != nil {
+		if err = actions.ProvisionDownstreamClusters(r, rancherClient, &rancherConfig); err != nil {
 			return err
 		}
 	}
