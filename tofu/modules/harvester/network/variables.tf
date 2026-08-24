@@ -1,3 +1,4 @@
+
 variable "project_name" {
   description = "A prefix for names of objects created by this module"
   type        = string
@@ -34,7 +35,7 @@ variable "network_details" {
     vlan_id             = 100
     name                = "vmnet-shared"
     namespace           = "default"
-    interace_type       = "bridge"
+    interface_type      = "bridge"
     public              = true
     wait_for_lease      = true
   }
@@ -72,5 +73,11 @@ variable "ssh_bastion_key_path" {
   type        = string
   default     = null
 }
-variable "images_by_name" { type = map(string) default = {} }
-variable "ssh_keys_by_name" { type = map(object({ id = string, public_key = string })) default = {} }
+
+variable "images_by_name" {
+  default = null
+}
+
+variable "ssh_keys_by_name" {
+  default = null
+}
