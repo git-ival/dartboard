@@ -73,11 +73,7 @@ func (c *Client) QueryRangeContext(ctx context.Context, promQL string, start, en
 	q.Set("step", strconv.FormatFloat(step.Seconds(), 'f', -1, 64))
 
 	endpoint := c.baseURL + "/api/v1/query_range?" + q.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := c.http.Do(req)
+	resp, err := c.http.Get(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("query_range GET failed: %w", err)
 	}

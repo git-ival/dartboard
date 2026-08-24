@@ -17,9 +17,11 @@ limitations under the License.
 package main
 
 import (
-	"log"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/rancher/dartboard/cmd/dartboard/subcommands"
 	cli "github.com/urfave/cli/v2"
@@ -95,11 +97,11 @@ func appCommands() []*cli.Command {
 			Description: "port-forwards to rancher-monitoring Prometheus and exports curated range queries as CSV and JSON",
 			Action:      subcommands.CollectMetrics,
 			Flags: []cli.Flag{
-				&cli.StringFlag{Name: subcommands.ArgMetricsStart, Usage: "RFC3339 start (default: end minus last)"},
-				&cli.StringFlag{Name: subcommands.ArgMetricsEnd, Usage: "RFC3339 end (default: now)"},
-				&cli.StringFlag{Name: subcommands.ArgMetricsLast, Value: "1h", Usage: "lookback when start is omitted"},
-				&cli.StringFlag{Name: subcommands.ArgMetricsStep, Value: "30s", Usage: "Prometheus query_range step"},
-				&cli.StringFlag{Name: subcommands.ArgMetricsOutput, Usage: "output directory"},
+				&cli.StringFlag{Name: subcommands.ArgStart, Usage: "RFC3339 start (default: end minus last)"},
+				&cli.StringFlag{Name: subcommands.ArgEnd, Usage: "RFC3339 end (default: now)"},
+				&cli.StringFlag{Name: subcommands.ArgLast, Value: "1h", Usage: "lookback when start is omitted"},
+				&cli.StringFlag{Name: subcommands.ArgStep, Value: "30s", Usage: "Prometheus query_range step"},
+				&cli.StringFlag{Name: subcommands.ArgOutput, Usage: "output directory"},
 			},
 		},
 		{
@@ -186,12 +188,39 @@ func main() {
 		Commands: appCommands(),
 	}
 
-	if err := app.Run(os.Args); err != nil {
-		if exitErr, ok := err.(cli.ExitCoder); ok {
-			log.Print(err)
-			os.Exit(exitErr.ExitCode())
-		}
+	subcmd := subcommandFromArgs(os.Args)
+	start := time.Now()
+	err := app.Run(os.Args)
+	elapsed := time.Since(start).Round(time.Second)
 
-		log.Fatal(err)
+	prefix := "dartboard"
+	if subcmd != "" {
+		prefix = "dartboard " + subcmd
 	}
+
+	if err != nil {
+		fmt.Printf("%s exited with error after %s: %v\n", prefix, elapsed, err)
+		os.Exit(1)
+	}
+	fmt.Printf("%s exited successfully (took %s)\n", prefix, elapsed)
+}
+
+// subcommandFromArgs returns the first non-flag token in args[1:], skipping the
+// global -d/--dart flag and its value. Returns "" when no subcommand is present.
+func subcommandFromArgs(args []string) string {
+	i := 1
+	for i < len(args) {
+		a := args[i]
+		switch {
+		case a == "-d" || a == "--dart":
+			i += 2
+		case strings.HasPrefix(a, "--dart=") || strings.HasPrefix(a, "-d="):
+			i++
+		case strings.HasPrefix(a, "-"):
+			i++
+		default:
+			return a
+		}
+	}
+	return ""
 }

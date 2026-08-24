@@ -22,11 +22,11 @@ import (
 )
 
 const (
-	ArgMetricsStart  = "start"
-	ArgMetricsEnd    = "end"
-	ArgMetricsLast   = "last"
-	ArgMetricsStep   = "step"
-	ArgMetricsOutput = "output"
+	ArgStart  = "start"
+	ArgEnd    = "end"
+	ArgLast   = "last"
+	ArgStep   = "step"
+	ArgOutput = "output"
 
 	prometheusNamespace = "cattle-monitoring-system"
 	prometheusService   = "svc/rancher-monitoring-prometheus"
@@ -65,47 +65,47 @@ func CollectMetrics(c *cli.Context) error {
 	promURL := fmt.Sprintf("http://127.0.0.1:%d", localPort)
 	logrus.Infof("collecting metrics from %s for window %s..%s (step %s)", promURL, start.Format(time.RFC3339), end.Format(time.RFC3339), step)
 
-	return metrics.Collect(c.Context, promURL, c.String(ArgDart), d.TofuWorkspace, start, end, step, outDir)
+	return metrics.Collect(promURL, c.String(ArgDart), d.TofuWorkspace, start, end, step, outDir)
 }
 
 func resolveWindow(c *cli.Context) (time.Time, time.Time, time.Duration, error) {
-	step, err := time.ParseDuration(c.String(ArgMetricsStep))
+	step, err := time.ParseDuration(c.String(ArgStep))
 	if err != nil {
-		return time.Time{}, time.Time{}, 0, fmt.Errorf("invalid --%s: %w", ArgMetricsStep, err)
+		return time.Time{}, time.Time{}, 0, fmt.Errorf("invalid --%s: %w", ArgStep, err)
 	}
 
 	var end time.Time
-	if s := c.String(ArgMetricsEnd); s != "" {
+	if s := c.String(ArgEnd); s != "" {
 		end, err = time.Parse(time.RFC3339, s)
 		if err != nil {
-			return time.Time{}, time.Time{}, 0, fmt.Errorf("invalid --%s (want RFC3339): %w", ArgMetricsEnd, err)
+			return time.Time{}, time.Time{}, 0, fmt.Errorf("invalid --%s (want RFC3339): %w", ArgEnd, err)
 		}
 	} else {
 		end = time.Now().UTC()
 	}
 
 	var start time.Time
-	if s := c.String(ArgMetricsStart); s != "" {
+	if s := c.String(ArgStart); s != "" {
 		start, err = time.Parse(time.RFC3339, s)
 		if err != nil {
-			return time.Time{}, time.Time{}, 0, fmt.Errorf("invalid --%s (want RFC3339): %w", ArgMetricsStart, err)
+			return time.Time{}, time.Time{}, 0, fmt.Errorf("invalid --%s (want RFC3339): %w", ArgStart, err)
 		}
 	} else {
-		last, err := time.ParseDuration(c.String(ArgMetricsLast))
+		last, err := time.ParseDuration(c.String(ArgLast))
 		if err != nil {
-			return time.Time{}, time.Time{}, 0, fmt.Errorf("invalid --%s: %w", ArgMetricsLast, err)
+			return time.Time{}, time.Time{}, 0, fmt.Errorf("invalid --%s: %w", ArgLast, err)
 		}
 		start = end.Add(-last)
 	}
 
 	if !end.After(start) {
-		return time.Time{}, time.Time{}, 0, fmt.Errorf("--%s must be after --%s", ArgMetricsEnd, ArgMetricsStart)
+		return time.Time{}, time.Time{}, 0, fmt.Errorf("--%s must be after --%s", ArgEnd, ArgStart)
 	}
 	return start, end, step, nil
 }
 
 func resolveOutputDir(c *cli.Context, workspace string) string {
-	if s := c.String(ArgMetricsOutput); s != "" {
+	if s := c.String(ArgOutput); s != "" {
 		return s
 	}
 	suffix := time.Now().UTC().Format("20060102-150405")
