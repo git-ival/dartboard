@@ -72,3 +72,5 @@ variable "ssh_bastion_key_path" {
   type        = string
   default     = null
 }
+variable "images_by_name" { type = map(string) default = {} }
+variable "ssh_keys_by_name" { type = map(object({ id = string, public_key = string })) default = {} }
