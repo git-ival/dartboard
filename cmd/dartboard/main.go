@@ -90,6 +90,19 @@ func appCommands() []*cli.Command {
 			Action:      subcommands.Redeploy,
 		},
 		{
+			Name:        "collect-metrics",
+			Usage:       "Collect scaling metrics from upstream Prometheus",
+			Description: "port-forwards to rancher-monitoring Prometheus and exports curated range queries as CSV and JSON",
+			Action:      subcommands.CollectMetrics,
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: subcommands.ArgMetricsStart, Usage: "RFC3339 start (default: end minus last)"},
+				&cli.StringFlag{Name: subcommands.ArgMetricsEnd, Usage: "RFC3339 end (default: now)"},
+				&cli.StringFlag{Name: subcommands.ArgMetricsLast, Value: "1h", Usage: "lookback when start is omitted"},
+				&cli.StringFlag{Name: subcommands.ArgMetricsStep, Value: "30s", Usage: "Prometheus query_range step"},
+				&cli.StringFlag{Name: subcommands.ArgMetricsOutput, Usage: "output directory"},
+			},
+		},
+		{
 			Name:        "summarize",
 			Usage:       "Summarize the current deployment by capturing metrics, profiles, and resource counts",
 			Description: "runs `export-metrics`, `collect-profile`, and `resource-counts` against the deployed clusters",
@@ -133,6 +146,25 @@ func appCommands() []*cli.Command {
 					Value:   false,
 					Usage:   "only include current profiles in summary",
 				},
+			},
+		},
+		{
+			Name: "collect-profiles", Usage: "Collect Rancher pprof profiles over time", Action: subcommands.CollectProfiles,
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: subcommands.ArgDiagnosticsFor, Value: "10m"},
+				&cli.StringFlag{Name: subcommands.ArgDiagnosticsInterval, Value: "120s"},
+				&cli.StringFlag{Name: subcommands.ArgProfiles, Value: "goroutine,heap,profile"},
+				&cli.StringFlag{Name: subcommands.ArgCPUDuration, Value: "30s"},
+				&cli.StringFlag{Name: subcommands.ArgDiagnosticsOutput},
+			},
+		},
+		{
+			Name: "collect-logs", Usage: "Collect Rancher-family logs over time", Action: subcommands.CollectLogs,
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: subcommands.ArgDiagnosticsFor, Value: "10m"},
+				&cli.StringFlag{Name: subcommands.ArgDiagnosticsInterval, Value: "60s"},
+				&cli.StringFlag{Name: subcommands.ArgApps, Value: "rancher"},
+				&cli.StringFlag{Name: subcommands.ArgDiagnosticsOutput},
 			},
 		},
 	}

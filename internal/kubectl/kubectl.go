@@ -18,11 +18,13 @@ package kubectl
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -242,6 +244,47 @@ func Exec(kubepath string, output io.Writer, args ...string) error {
 	}
 
 	return nil
+}
+
+func PortForward(ctx context.Context, kubeconfig, namespace, target string, remotePort int) (int, func(), error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, nil, err
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+	cmd := vendored.CommandContext(ctx, "kubectl", "--kubeconfig="+kubeconfig, "port-forward", "--namespace="+namespace, target, fmt.Sprintf("%d:%d", port, remotePort))
+	cmd.Stdout, cmd.Stderr = log.Writer(), log.Writer()
+	if err := cmd.Start(); err != nil {
+		return 0, nil, err
+	}
+	var once sync.Once
+	stop := func() {
+		once.Do(func() {
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			_ = cmd.Wait()
+		})
+	}
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	for {
+		conn, e := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 500*time.Millisecond)
+		if e == nil {
+			_ = conn.Close()
+			return port, stop, nil
+		}
+		select {
+		case <-ctx.Done():
+			stop()
+			return 0, nil, ctx.Err()
+		case <-deadline.C:
+			stop()
+			return 0, nil, fmt.Errorf("port-forward timeout")
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }
 
 func Apply(kubePath, filePath string) error {
