@@ -65,7 +65,7 @@ func CollectMetrics(c *cli.Context) error {
 	promURL := fmt.Sprintf("http://127.0.0.1:%d", localPort)
 	logrus.Infof("collecting metrics from %s for window %s..%s (step %s)", promURL, start.Format(time.RFC3339), end.Format(time.RFC3339), step)
 
-	return metrics.Collect(promURL, c.String(ArgDart), d.TofuWorkspace, start, end, step, outDir)
+	return metrics.Collect(c.Context, promURL, c.String(ArgDart), d.TofuWorkspace, start, end, step, outDir)
 }
 
 func resolveWindow(c *cli.Context) (time.Time, time.Time, time.Duration, error) {
