@@ -7,6 +7,7 @@ output "id" {
 }
 
 output "private_name" {
+  depends_on = [null_resource.host_configuration]
   value = "${var.network_config.public ? local.public_network_interfaces[0].ip_address : local.private_network_interfaces[0].ip_address}.sslip.io"
 }
 
@@ -15,6 +16,7 @@ output "private_ip" {
 }
 
 output "public_name" {
+  depends_on = [null_resource.host_configuration]
   value = "${var.network_config.public ? local.public_network_interfaces[0].ip_address : local.private_network_interfaces[0].ip_address}.sslip.io"
 }
 
