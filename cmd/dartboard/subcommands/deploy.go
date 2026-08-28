@@ -397,10 +397,6 @@ func chartInstallRancher(r *dart.Dart, rancherImageTag string, cluster *tofu.Clu
 			"name":  "CATTLE_PROMETHEUS_METRICS",
 			"value": "true",
 		},
-		{
-			"name":  "CATTLE_DEV_MODE",
-			"value": "true",
-		},
 	}
 	extraEnv = append(extraEnv, r.ChartVariables.ExtraEnvironmentVariables...)
 
