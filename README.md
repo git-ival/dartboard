@@ -144,6 +144,48 @@ SSH tunnels might be broken. Reopen them via:
 ./config/open-tunnels-to-upstream-*.sh
 ```
 
+### `context deadline exceeded` while installing a distro over SSH
+
+If `tofu apply` fails after several minutes with:
+```
+│ Error: copying files to remote: context deadline exceeded
+│
+│   with module.test_environment.module.downstream_clusters[0].ssh_sensitive_resource.first_server_installation[0],
+```
+
+then the SSH provider could not reach the node within `ssh_timeout` (default `600s`).
+This is almost always a name-resolution or reachability problem rather than a slow
+install, so check those first — waiting longer will not help:
+
+1. **Can you resolve the node's address?** The Harvester and Azure node modules derive
+   host names as `<ip>.sslip.io`. `sslip.io` is a public wildcard DNS zone, and many
+   resolvers implement DNS rebinding protection, which drops answers that contain
+   RFC1918 addresses. Test with:
+   ```shell
+   getent hosts 192.168.0.10.sslip.io   # or: dscacheutil -q host -a name ... on macOS
+   ```
+   If a public address such as `1.2.3.4.sslip.io` resolves but a private one does not,
+   your resolver is filtering. When tunnelling with `sshuttle`, pass `--dns` so that
+   lookups are performed on the remote side:
+   ```shell
+   sshuttle --dns -r <jump-host> 192.168.0.0/24
+   ```
+
+2. **Can you reach the node at all?** Use the generated helper script:
+   ```shell
+   ./<workspace>_config/ssh-to-<node>.sh
+   ```
+
+3. **Is a bastion involved?** Set `ssh_bastion_host`, `ssh_bastion_user` and
+   `ssh_bastion_key_path` in the dart. If `ssh_bastion_key_path` is omitted, the node
+   key is used for the bastion hop as well.
+
+4. **Genuinely slow environment?** Only then raise the timeout in the dart:
+   ```yaml
+   tofu_variables:
+     ssh_timeout: 1200s
+   ```
+
 ### OpenTofu extended logging
 
 In case OpenTofu returns an error with little context about what happened, use the following to get more complete debugging output:

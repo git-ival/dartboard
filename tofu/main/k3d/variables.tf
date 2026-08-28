@@ -56,3 +56,9 @@ variable "first_app_https_port" {
   description = "Port number where the first server's port 443 is published locally. Other clusters' ports are published in successive ports"
   default     = 8443
 }
+
+variable "ssh_timeout" {
+  description = "Total time the SSH provider may spend connecting to a node and running its install commands. Raise this for slow networks, slow images or large clusters."
+  type        = string
+  default     = "600s"
+}

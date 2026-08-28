@@ -21,6 +21,7 @@ module "test_environment" {
   node_module                      = "k3d/node"
   ssh_user                         = null
   ssh_private_key_path             = null
+  ssh_timeout                      = var.ssh_timeout
   network_config                   = module.network.config
   first_kubernetes_api_port        = var.first_kubernetes_api_port
   first_app_http_port              = var.first_app_http_port

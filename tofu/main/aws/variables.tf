@@ -123,3 +123,9 @@ variable "bastion_volume_size" {
   type        = number
   default     = 30
 }
+
+variable "ssh_timeout" {
+  description = "Total time the SSH provider may spend connecting to a node and running its install commands. Raise this for slow networks, slow images or large clusters."
+  type        = string
+  default     = "600s"
+}

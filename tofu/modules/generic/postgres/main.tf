@@ -33,6 +33,7 @@ resource "ssh_resource" "install_postgres" {
   bastion_host        = var.network_config.ssh_bastion_host
   bastion_user        = var.network_config.ssh_bastion_user
   bastion_private_key = local.bastion_private_key
+  timeout             = var.ssh_timeout
 
   file {
     content = templatefile("${path.module}/install_postgres.sh", {

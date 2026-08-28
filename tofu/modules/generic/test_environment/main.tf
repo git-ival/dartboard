@@ -25,6 +25,7 @@ module "upstream_postgres" {
   node_module           = var.node_module
   node_module_variables = var.upstream_cluster.postgres_node_variables
   ssh_private_key_path  = var.ssh_private_key_path
+  ssh_timeout           = var.ssh_timeout
 }
 
 module "upstream_cluster" {
@@ -45,6 +46,7 @@ module "upstream_cluster" {
   tunnel_app_http_port      = var.first_app_http_port
   tunnel_app_https_port     = var.first_app_https_port
   ssh_private_key_path      = var.ssh_private_key_path
+  ssh_timeout               = var.ssh_timeout
   ssh_user                  = var.ssh_user
   node_module               = var.node_module
   network_config            = var.network_config
@@ -70,6 +72,7 @@ module "tester_cluster" {
   tunnel_app_http_port      = var.first_app_http_port + 1
   tunnel_app_https_port     = var.first_app_https_port + 1
   ssh_private_key_path      = var.ssh_private_key_path
+  ssh_timeout               = var.ssh_timeout
   ssh_user                  = var.ssh_user
   node_module               = var.node_module
   network_config            = var.network_config
@@ -96,6 +99,7 @@ module "downstream_clusters" {
   tunnel_app_http_port      = var.first_app_http_port + 2 + count.index
   tunnel_app_https_port     = var.first_app_https_port + 2 + count.index
   ssh_private_key_path      = var.ssh_private_key_path
+  ssh_timeout               = var.ssh_timeout
   ssh_user                  = var.ssh_user
   node_module               = var.node_module
   network_config            = var.network_config

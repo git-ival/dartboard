@@ -62,7 +62,7 @@ resource "ssh_sensitive_resource" "first_server_installation" {
   bastion_host        = var.network_config.ssh_bastion_host
   bastion_user        = var.network_config.ssh_bastion_user
   bastion_private_key = local.bastion_private_key
-  timeout             = "600s"
+  timeout             = var.ssh_timeout
 
   file {
     content     = data.http.get_rke2.response_body
@@ -117,7 +117,7 @@ resource "ssh_resource" "additional_server_installation" {
   bastion_host        = var.network_config.ssh_bastion_host
   bastion_user        = var.network_config.ssh_bastion_user
   bastion_private_key = local.bastion_private_key
-  timeout             = "600s"
+  timeout             = var.ssh_timeout
 
   file {
     content     = data.http.get_rke2.response_body
@@ -164,7 +164,7 @@ resource "ssh_resource" "agent_installation" {
   bastion_host        = var.network_config.ssh_bastion_host
   bastion_user        = var.network_config.ssh_bastion_user
   bastion_private_key = local.bastion_private_key
-  timeout             = "600s"
+  timeout             = var.ssh_timeout
 
   file {
     content     = data.http.get_rke2.response_body

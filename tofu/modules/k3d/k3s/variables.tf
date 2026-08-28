@@ -45,6 +45,12 @@ variable "ssh_user" {
   default     = null
 }
 
+variable "ssh_timeout" {
+  description = "Ignored"
+  type        = string
+  default     = null
+}
+
 variable "local_kubernetes_api_port" {
   description = "Local port this cluster's Kubernetes API will be published to (via SSH tunnel)"
   default     = 6445

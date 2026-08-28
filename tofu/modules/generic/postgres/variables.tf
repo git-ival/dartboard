@@ -40,3 +40,9 @@ variable "kine_password" {
   type        = string
   default     = "kinepassword"
 }
+
+variable "ssh_timeout" {
+  description = "Total time the SSH provider may spend connecting to a node and running its install commands. Raise this for slow networks, slow images or large clusters."
+  type        = string
+  default     = "600s"
+}

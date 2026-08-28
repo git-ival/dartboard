@@ -153,3 +153,9 @@ variable "create_image" {
   description = "Whether to create a new image for the VMs"
   default     = true
 }
+
+variable "ssh_timeout" {
+  description = "Total time the SSH provider may spend connecting to a node and running its install commands. Raise this for slow networks, slow images or large clusters."
+  type        = string
+  default     = "600s"
+}
