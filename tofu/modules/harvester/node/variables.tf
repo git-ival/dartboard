@@ -75,8 +75,8 @@ variable "node_module_variables" {
       size = number
       bus  = string
     })))
-    efi         = optional(bool)
-    secure_boot = optional(bool)
+    efi           = optional(bool)
+    secure_boot   = optional(bool)
     node_selector = optional(map(string))
   })
   default = {

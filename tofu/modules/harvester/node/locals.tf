@@ -1,5 +1,5 @@
 locals {
-  ssh_keys = { for key in coalesce(try(var.node_module_variables.ssh_shared_public_keys, null), []) : "${key.namespace}/${key.name}" => var.network_config.ssh_keys_by_name["${key.namespace}/${key.name}"] }
+  ssh_keys    = { for key in coalesce(try(var.node_module_variables.ssh_shared_public_keys, null), []) : "${key.namespace}/${key.name}" => var.network_config.ssh_keys_by_name["${key.namespace}/${key.name}"] }
   public_keys = compact(concat([var.network_config.ssh_public_key], [for key in local.ssh_keys : key.public_key]))
   ssh_key_ids = compact(concat([var.network_config.ssh_public_key_id], [for key in local.ssh_keys : key.id]))
   template_user_data = templatefile("${path.module}/user_data.yaml", {
