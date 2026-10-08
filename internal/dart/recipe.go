@@ -40,8 +40,11 @@ type ClusterTemplate struct {
 }
 
 type ChartVariables struct {
+	ForceKubePrometheusStack    bool             `yaml:"force_kube_prometheus_stack"`
 	RancherAppsRepoOverride     string           `yaml:"rancher_apps_repo_override"`
 	RancherMonitoringVersion    string           `yaml:"rancher_monitoring_version"`
+	KubePrometheusStackVersion  string           `yaml:"kube_prometheus_stack_version"`
+	MonitoringDashboardsVersion string           `yaml:"rancher_monitoring_dashboards_version"`
 	AdminPassword               string           `yaml:"admin_password"`
 	UserPassword                string           `yaml:"user_password"`
 	RancherVersion              string           `yaml:"rancher_version"`
@@ -75,6 +78,9 @@ func defaultDart() Dart {
 			AdminPassword:               "adminadminadmin",
 			RancherVersion:              "2.9.1",
 			RancherMonitoringVersion:    "104.1.0+up57.0.3",
+			ForceKubePrometheusStack:    false,
+			KubePrometheusStackVersion:  "92.1.0",
+			MonitoringDashboardsVersion: "110.0.1+up0.1.4",
 			CertManagerVersion:          "1.8.0",
 			TesterGrafanaVersion:        "6.56.5",
 		},
@@ -110,6 +116,8 @@ func Parse(path string) (*Dart, error) {
 
 	result.ChartVariables.RancherVersion = normalizeVersion(result.ChartVariables.RancherVersion)
 	result.ChartVariables.RancherMonitoringVersion = normalizeVersion(result.ChartVariables.RancherMonitoringVersion)
+	result.ChartVariables.KubePrometheusStackVersion = normalizeVersion(result.ChartVariables.KubePrometheusStackVersion)
+	result.ChartVariables.MonitoringDashboardsVersion = normalizeVersion(result.ChartVariables.MonitoringDashboardsVersion)
 	result.ChartVariables.CertManagerVersion = normalizeVersion(result.ChartVariables.CertManagerVersion)
 	result.ChartVariables.TesterGrafanaVersion = normalizeVersion(result.ChartVariables.TesterGrafanaVersion)
 	result.ChartVariables.ForcePrimeRegistry = result.ChartVariables.ForcePrimeRegistry || needsPrime(result.ChartVariables.RancherVersion)

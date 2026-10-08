@@ -57,6 +57,8 @@ const (
 	chartNameRancherIngress       = "rancher-ingress"
 	chartNameRancherMonitoringCRD = "rancher-monitoring-crd"
 	chartNameRancherMonitoring    = "rancher-monitoring"
+	chartNameKubePrometheusStack  = "kube-prometheus-stack"
+	chartNameMonitoringDashboards = "rancher-monitoring-dashboards"
 	chartNameCgroupsExporter      = "cgroups-exporter"
 
 	// Chart namespaces
@@ -481,7 +483,18 @@ func chartInstallRancherIngress(cluster *tofu.Cluster) error {
 }
 
 func chartInstallRancherMonitoring(r *dart.Dart, cluster *tofu.Cluster) error {
+	rancherMajorVersion, _, _ := strings.Cut(r.ChartVariables.RancherVersion, ".")
+	major, _ := strconv.Atoi(rancherMajorVersion)
 	rancherMinorVersion := strings.Join(strings.Split(r.ChartVariables.RancherVersion, ".")[0:2], ".")
+	minor, _ := strconv.Atoi(strings.Split(rancherMinorVersion, ".")[1])
+	if !r.ChartVariables.ForceKubePrometheusStack && (major < 2 || (major == 2 && minor < 15)) {
+		return chartInstallLegacyRancherMonitoring(r, cluster, rancherMinorVersion)
+	}
+
+	return chartInstallKubePrometheusStack(r, cluster)
+}
+
+func chartInstallLegacyRancherMonitoring(r *dart.Dart, cluster *tofu.Cluster, rancherMinorVersion string) error {
 
 	const chartPrefix = "https://github.com/rancher/charts/raw/release-v"
 
@@ -531,6 +544,46 @@ func chartInstallRancherMonitoring(r *dart.Dart, cluster *tofu.Cluster) error {
 	chartVals = getRancherMonitoringValsJSON(cluster.ReserveNodeForMonitoring, mimirURL)
 
 	return chartInstall(cluster.Kubeconfig, chartRancherMonitoring, chartVals)
+}
+
+func chartInstallKubePrometheusStack(r *dart.Dart, cluster *tofu.Cluster) error {
+	if err := helm.UninstallIfPresent(cluster.Kubeconfig, chartNameRancherMonitoring, nsCattleMonitoringSystem); err != nil {
+		return fmt.Errorf("uninstall legacy %s: %w", chartNameRancherMonitoring, err)
+	}
+
+	kubePrometheusStack := chart{
+		name:      chartNameKubePrometheusStack,
+		namespace: nsCattleMonitoringSystem,
+		path:      fmt.Sprintf("https://prometheus-community.github.io/helm-charts/kube-prometheus-stack-%s.tgz", r.ChartVariables.KubePrometheusStackVersion),
+	}
+
+	clusterAdd, err := getAppAddressFor(*cluster)
+	if err != nil {
+		return fmt.Errorf("chart %s: %w", kubePrometheusStack.name, err)
+	}
+	stackValues := getKubePrometheusStackVals(cluster.ReserveNodeForMonitoring, clusterAdd.Public.HTTPURL+"/mimir/api/v1/push")
+	if err := chartInstall(cluster.Kubeconfig, kubePrometheusStack, stackValues); err != nil {
+		return err
+	}
+	chartPath := "https://github.com/rancher/charts/raw/refs/heads/release-v2.15"
+	if r.ChartVariables.RancherAppsRepoOverride != "" {
+		chartPath = r.ChartVariables.RancherAppsRepoOverride
+	}
+	dashboards := chart{
+		name:      chartNameMonitoringDashboards,
+		namespace: nsCattleMonitoringSystem,
+		path:      fmt.Sprintf("%s/assets/rancher-monitoring-dashboards/rancher-monitoring-dashboards-%s.tgz", chartPath, r.ChartVariables.MonitoringDashboardsVersion),
+	}
+
+	dashboardValues := map[string]any{
+		"global":          map[string]any{"cattle": map[string]any{"clusterId": "local", "clusterName": "local", "systemDefaultRegistry": ""}},
+		"monitoringProxy": monitoringSchedulingValues(cluster.ReserveNodeForMonitoring),
+	}
+	if err := chartInstall(cluster.Kubeconfig, dashboards, dashboardValues); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func chartInstallCgroupsExporter(cluster *tofu.Cluster) error {
@@ -590,41 +643,7 @@ func getRancherMonitoringValsJSON(reserveNodeForMonitoring bool, mimirURL string
 				"retentionSize":      "50GiB",
 				"scrapeInterval":     "1m",
 
-				"additionalScrapeConfigs": []any{
-					map[string]any{
-						"job_name":     "node-cgroups-exporter",
-						"honor_labels": false,
-						"kubernetes_sd_configs": []any{map[string]any{
-							"role": "node",
-						}},
-						"scheme": "http",
-						"relabel_configs": []any{
-							map[string]any{
-								"action": "labelmap",
-								"regex":  "__meta_kubernetes_node_label_(.+)",
-							},
-							map[string]any{
-								"source_labels": []any{"__address__"},
-								"action":        "replace",
-								"target_label":  "__address__",
-								"regex":         "([^:;]+):(\\d+)",
-								"replacement":   "${1}:9753",
-							},
-							map[string]any{
-								"source_labels": []any{"__meta_kubernetes_node_name"},
-								"action":        "keep",
-								"regex":         ".*",
-							},
-							map[string]any{
-								"source_labels": []any{"__meta_kubernetes_node_name"},
-								"action":        "replace",
-								"target_label":  "node",
-								"regex":         "(.*)",
-								"replacement":   "${1}",
-							},
-						},
-					},
-				},
+				"additionalScrapeConfigs": getCgroupsScrapeConfig(),
 
 				"remoteWrite": remoteWrite,
 			},
@@ -641,6 +660,99 @@ func getRancherMonitoringValsJSON(reserveNodeForMonitoring bool, mimirURL string
 		},
 		"systemDefaultRegistry": "",
 	}
+}
+
+func getKubePrometheusStackVals(reserveNodeForMonitoring bool, mimirURL string) map[string]any {
+	nodeSelector := map[string]any{}
+	tolerations := []any{}
+	if reserveNodeForMonitoring {
+		nodeSelector["monitoring"] = "true"
+		tolerations = append(tolerations, map[string]any{"key": "monitoring", "operator": "Exists", "effect": "NoSchedule"})
+	}
+
+	remoteWrite := []any{}
+	if mimirURL != "" {
+		remoteWrite = append(remoteWrite, map[string]any{
+			"url": mimirURL,
+			"writeRelabelConfigs": []any{map[string]any{
+				"sourceLabels": []any{"__name__"},
+				"regex":        "(node_namespace_pod_container|node_cpu|node_load|node_memory|node_network_receive_bytes_total|container_network_receive_bytes_total|cgroups_).*",
+				"action":       "keep",
+			}},
+		})
+	}
+
+	return map[string]any{
+		"alertmanager": map[string]any{"enabled": false},
+		"grafana": map[string]any{
+			"nodeSelector": nodeSelector,
+			"tolerations":  tolerations,
+			"persistence":  map[string]any{"enabled": false},
+			"grafana.ini": map[string]any{
+				"security":       map[string]any{"allow_embedding": true},
+				"auth":           map[string]any{"disable_login_form": false},
+				"auth.anonymous": map[string]any{"enabled": true, "org_role": "Viewer"},
+				"dashboards":     map[string]any{"default_home_dashboard_path": "/tmp/dashboards/rancher-default-home.json"},
+				"users":          map[string]any{"auto_assign_org_role": "Viewer"},
+			},
+		},
+		"prometheus": map[string]any{"prometheusSpec": map[string]any{
+			"evaluationInterval": "1m",
+			"scrapeInterval":     "1m",
+			"nodeSelector":       nodeSelector,
+			"tolerations":        tolerations,
+			"resources":          map[string]any{"limits": map[string]any{"memory": "10000Mi"}},
+			"retentionSize":      "50GiB",
+			"serviceMonitorSelectorNilUsesHelmValues": false,
+			"podMonitorSelectorNilUsesHelmValues":     false,
+			"additionalScrapeConfigs":                 getCgroupsScrapeConfig(),
+			"remoteWrite":                             remoteWrite,
+		}},
+		"prometheus-node-exporter": map[string]any{
+			"hostRootFsMount": map[string]any{"enabled": false},
+			"nodeSelector":    nodeSelector,
+			"tolerations":     tolerations,
+		},
+		"kube-state-metrics": map[string]any{"nodeSelector": nodeSelector, "tolerations": tolerations},
+		"prometheusOperator": map[string]any{"nodeSelector": nodeSelector, "tolerations": tolerations},
+		"global": map[string]any{
+			"cattle": map[string]any{
+				"clusterId":             "local",
+				"clusterName":           "local",
+				"systemDefaultRegistry": "",
+			},
+		},
+		"systemDefaultRegistry": "",
+		"kubeEtcd":              map[string]any{"enabled": false},
+		"kubeControllerManager": map[string]any{"enabled": false},
+		"kubeScheduler":         map[string]any{"enabled": false},
+		"kubeProxy":             map[string]any{"enabled": false},
+	}
+}
+
+func monitoringSchedulingValues(reserveNodeForMonitoring bool) map[string]any {
+	if !reserveNodeForMonitoring {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"nodeSelector": map[string]any{"monitoring": "true"},
+		"tolerations":  []any{map[string]any{"key": "monitoring", "operator": "Exists", "effect": "NoSchedule"}},
+	}
+}
+
+func getCgroupsScrapeConfig() []any {
+	return []any{map[string]any{
+		"job_name":              "node-cgroups-exporter",
+		"honor_labels":          false,
+		"kubernetes_sd_configs": []any{map[string]any{"role": "node"}},
+		"scheme":                "http",
+		"relabel_configs": []any{
+			map[string]any{"action": "labelmap", "regex": "__meta_kubernetes_node_label_(.+)"},
+			map[string]any{"source_labels": []any{"__address__"}, "action": "replace", "target_label": "__address__", "regex": "([^:;]+):(\\d+)", "replacement": "${1}:9753"},
+			map[string]any{"source_labels": []any{"__meta_kubernetes_node_name"}, "action": "keep", "regex": ".*"},
+			map[string]any{"source_labels": []any{"__meta_kubernetes_node_name"}, "action": "replace", "target_label": "node", "regex": "(.*)", "replacement": "${1}"},
+		},
+	}}
 }
 
 func getGrafanaValsJSON(r *dart.Dart, name, url, ingressClass string) map[string]any {
