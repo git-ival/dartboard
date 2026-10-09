@@ -350,10 +350,12 @@ func chartInstallCertManager(r *dart.Dart, cluster *tofu.Cluster) error {
 		path:      fmt.Sprintf("https://charts.jetstack.io/charts/cert-manager-v%s.tgz", r.ChartVariables.CertManagerVersion),
 	}
 	chartValues := map[string]any{"installCRDs": true}
+
 	var extraArgs []string
 
 	if certManagerSupportsOCI(r.ChartVariables.CertManagerVersion) {
 		chartCertManager.path = "oci://quay.io/jetstack/charts/cert-manager"
+
 		extraArgs = []string{"--version=v" + r.ChartVariables.CertManagerVersion}
 		if certManagerSupportsCRDsValue(r.ChartVariables.CertManagerVersion) {
 			chartValues = map[string]any{"crds": map[string]any{"enabled": true}}
@@ -378,8 +380,10 @@ func certManagerMajorMinor(version string) (int, int, bool) {
 	if len(parts) < 2 {
 		return 0, 0, false
 	}
+
 	major, majorErr := strconv.Atoi(parts[0])
 	minor, minorErr := strconv.Atoi(parts[1])
+
 	return major, minor, majorErr == nil && minorErr == nil
 }
 
@@ -516,6 +520,7 @@ func chartInstallRancherMonitoring(r *dart.Dart, cluster *tofu.Cluster) error {
 	rancherMajorVersion, _, _ := strings.Cut(r.ChartVariables.RancherVersion, ".")
 	major, _ := strconv.Atoi(rancherMajorVersion)
 	rancherMinorVersion := strings.Join(strings.Split(r.ChartVariables.RancherVersion, ".")[0:2], ".")
+
 	minor, _ := strconv.Atoi(strings.Split(rancherMinorVersion, ".")[1])
 	if !r.ChartVariables.ForceKubePrometheusStack && (major < 2 || (major == 2 && minor < 15)) {
 		return chartInstallLegacyRancherMonitoring(r, cluster, rancherMinorVersion)
@@ -525,7 +530,6 @@ func chartInstallRancherMonitoring(r *dart.Dart, cluster *tofu.Cluster) error {
 }
 
 func chartInstallLegacyRancherMonitoring(r *dart.Dart, cluster *tofu.Cluster, rancherMinorVersion string) error {
-
 	const chartPrefix = "https://github.com/rancher/charts/raw/release-v"
 
 	chartPath := fmt.Sprintf("%s%s", chartPrefix, rancherMinorVersion)
@@ -591,6 +595,7 @@ func chartInstallKubePrometheusStack(r *dart.Dart, cluster *tofu.Cluster) error 
 	if err != nil {
 		return fmt.Errorf("chart %s: %w", kubePrometheusStack.name, err)
 	}
+
 	distro, err := kubectl.GetK8sDistro(cluster.Kubeconfig)
 	if err != nil {
 		return fmt.Errorf("failed to get Kubernetes distro: %w", err)
@@ -600,10 +605,12 @@ func chartInstallKubePrometheusStack(r *dart.Dart, cluster *tofu.Cluster) error 
 	if err := chartInstall(cluster.Kubeconfig, kubePrometheusStack, stackValues, "--version="+r.ChartVariables.KubePrometheusStackVersion); err != nil {
 		return err
 	}
+
 	chartPath := "https://github.com/rancher/charts/raw/refs/heads/release-v2.15"
 	if r.ChartVariables.RancherAppsRepoOverride != "" {
 		chartPath = r.ChartVariables.RancherAppsRepoOverride
 	}
+
 	dashboards := chart{
 		name:      chartNameMonitoringDashboards,
 		namespace: nsCattleMonitoringSystem,
@@ -614,6 +621,7 @@ func chartInstallKubePrometheusStack(r *dart.Dart, cluster *tofu.Cluster) error 
 	if err := chartInstall(cluster.Kubeconfig, dashboards, dashboardValues); err != nil {
 		return err
 	}
+
 	fmt.Printf("Grafana admin password (admin): %s\n", kubePrometheusStackGrafanaPasswordCommand())
 
 	return nil
@@ -714,8 +722,10 @@ func getRancherMonitoringValsJSON(reserveNodeForMonitoring bool, mimirURL string
 func getKubePrometheusStackVals(reserveNodeForMonitoring, k3sServer, enableIPv6 bool, grafanaAdminPassword, mimirURL string) map[string]any {
 	nodeSelector := map[string]any{}
 	tolerations := []any{}
+
 	if reserveNodeForMonitoring {
 		nodeSelector["monitoring"] = "true"
+
 		tolerations = append(tolerations, map[string]any{"key": "monitoring", "operator": "Exists", "effect": "NoSchedule"})
 	}
 
@@ -730,6 +740,7 @@ func getKubePrometheusStackVals(reserveNodeForMonitoring, k3sServer, enableIPv6 
 			}},
 		})
 	}
+
 	serviceIPDualStack := map[string]any{
 		"enabled":        enableIPv6,
 		"ipFamilies":     []any{"IPv4"},
@@ -801,6 +812,7 @@ func getKubePrometheusStackVals(reserveNodeForMonitoring, k3sServer, enableIPv6 
 	if grafanaAdminPassword != "" {
 		values["grafana"].(map[string]any)["adminPassword"] = grafanaAdminPassword
 	}
+
 	return values
 }
 
@@ -808,6 +820,7 @@ func monitoringSchedulingValues(reserveNodeForMonitoring bool) map[string]any {
 	if !reserveNodeForMonitoring {
 		return map[string]any{}
 	}
+
 	return map[string]any{
 		"nodeSelector": map[string]any{"monitoring": "true"},
 		"tolerations":  []any{map[string]any{"key": "monitoring", "operator": "Exists", "effect": "NoSchedule"}},

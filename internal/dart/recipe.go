@@ -15,6 +15,7 @@ import (
 // Dart is a "recipe" that encodes all parameters for a test run
 type Dart struct {
 	TofuVariables          map[string]any    `yaml:"tofu_variables"`
+	UpstreamCluster        *tofu.Cluster     `yaml:"upstream_cluster,omitempty"`
 	TofuMainDirectory      string            `yaml:"tofu_main_directory"`
 	TofuWorkspace          string            `yaml:"tofu_workspace"`
 	TofuWorkspaceStatePath string            `yaml:"-"`
@@ -23,9 +24,6 @@ type Dart struct {
 	TestVariables          TestVariables     `yaml:"test_variables"`
 	TofuParallelism        int               `yaml:"tofu_parallelism"`
 	ClusterBatchSize       int               `yaml:"cluster_batch_size"`
-	// UpstreamCluster describes existing upstream infrastructure. When set,
-	// Dartboard passes it through OpenTofu instead of creating an upstream.
-	UpstreamCluster *tofu.Cluster `yaml:"upstream_cluster,omitempty"`
 }
 
 type ClusterTemplate struct {
@@ -40,24 +38,24 @@ type ClusterTemplate struct {
 }
 
 type ChartVariables struct {
-	ForceKubePrometheusStack    bool             `yaml:"force_kube_prometheus_stack"`
-	EnableIPv6                  bool             `yaml:"enable_ipv6"`
+	RancherValues               string           `yaml:"rancher_values"`
+	CertManagerVersion          string           `yaml:"cert_manager_version"`
 	RancherAppsRepoOverride     string           `yaml:"rancher_apps_repo_override"`
 	RancherMonitoringVersion    string           `yaml:"rancher_monitoring_version"`
 	KubePrometheusStackVersion  string           `yaml:"kube_prometheus_stack_version"`
 	MonitoringDashboardsVersion string           `yaml:"rancher_monitoring_dashboards_version"`
 	GrafanaAdminPassword        string           `yaml:"grafana_admin_password"`
 	AdminPassword               string           `yaml:"admin_password"`
-	UserPassword                string           `yaml:"user_password"`
 	RancherVersion              string           `yaml:"rancher_version"`
-	RancherValues               string           `yaml:"rancher_values"`
-	TesterGrafanaVersion        string           `yaml:"tester_grafana_version"`
-	RancherImageOverride        string           `yaml:"rancher_image_override"`
-	CertManagerVersion          string           `yaml:"cert_manager_version"`
-	RancherImageTagOverride     string           `yaml:"rancher_image_tag_override"`
 	RancherChartRepoOverride    string           `yaml:"rancher_chart_repo_override"`
+	RancherImageOverride        string           `yaml:"rancher_image_override"`
+	TesterGrafanaVersion        string           `yaml:"tester_grafana_version"`
+	RancherImageTagOverride     string           `yaml:"rancher_image_tag_override"`
+	UserPassword                string           `yaml:"user_password"`
 	ExtraEnvironmentVariables   []map[string]any `yaml:"extra_environment_variables"`
 	RancherReplicas             int              `yaml:"rancher_replicas"`
+	ForceKubePrometheusStack    bool             `yaml:"force_kube_prometheus_stack"`
+	EnableIPv6                  bool             `yaml:"enable_ipv6"`
 	DownstreamRancherMonitoring bool             `yaml:"downstream_rancher_monitoring"`
 	ForcePrimeRegistry          bool             `yaml:"force_prime_registry"`
 }
