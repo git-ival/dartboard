@@ -311,7 +311,7 @@ func chartInstall(kubeConf string, chart chart, vals map[string]any, extraArgs .
 	path := chart.path
 
 	// Pull from local `charts/` dir if not using remote chart
-	if !strings.HasPrefix(path, "http") {
+	if !strings.HasPrefix(path, "http") && !strings.HasPrefix(path, "oci") {
 		path = filepath.Join("charts", path)
 	}
 
@@ -349,8 +349,38 @@ func chartInstallCertManager(r *dart.Dart, cluster *tofu.Cluster) error {
 		namespace: nsCertManager,
 		path:      fmt.Sprintf("https://charts.jetstack.io/charts/cert-manager-v%s.tgz", r.ChartVariables.CertManagerVersion),
 	}
+	chartValues := map[string]any{"installCRDs": true}
+	var extraArgs []string
 
-	return chartInstall(cluster.Kubeconfig, chartCertManager, map[string]any{"installCRDs": true})
+	if certManagerSupportsOCI(r.ChartVariables.CertManagerVersion) {
+		chartCertManager.path = "oci://quay.io/jetstack/charts/cert-manager"
+		extraArgs = []string{"--version=v" + r.ChartVariables.CertManagerVersion}
+		if certManagerSupportsCRDsValue(r.ChartVariables.CertManagerVersion) {
+			chartValues = map[string]any{"crds": map[string]any{"enabled": true}}
+		}
+	}
+
+	return chartInstall(cluster.Kubeconfig, chartCertManager, chartValues, extraArgs...)
+}
+
+func certManagerSupportsOCI(version string) bool {
+	major, minor, ok := certManagerMajorMinor(version)
+	return ok && (major > 1 || (major == 1 && minor >= 12))
+}
+
+func certManagerSupportsCRDsValue(version string) bool {
+	major, minor, ok := certManagerMajorMinor(version)
+	return ok && (major > 1 || (major == 1 && minor >= 15))
+}
+
+func certManagerMajorMinor(version string) (int, int, bool) {
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	major, majorErr := strconv.Atoi(parts[0])
+	minor, minorErr := strconv.Atoi(parts[1])
+	return major, minor, majorErr == nil && minorErr == nil
 }
 
 func chartInstallRancher(r *dart.Dart, rancherImageTag string, cluster *tofu.Cluster) error {
@@ -554,15 +584,20 @@ func chartInstallKubePrometheusStack(r *dart.Dart, cluster *tofu.Cluster) error 
 	kubePrometheusStack := chart{
 		name:      chartNameKubePrometheusStack,
 		namespace: nsCattleMonitoringSystem,
-		path:      fmt.Sprintf("https://prometheus-community.github.io/helm-charts/kube-prometheus-stack-%s.tgz", r.ChartVariables.KubePrometheusStackVersion),
+		path:      "oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack",
 	}
 
 	clusterAdd, err := getAppAddressFor(*cluster)
 	if err != nil {
 		return fmt.Errorf("chart %s: %w", kubePrometheusStack.name, err)
 	}
-	stackValues := getKubePrometheusStackVals(cluster.ReserveNodeForMonitoring, clusterAdd.Public.HTTPURL+"/mimir/api/v1/push")
-	if err := chartInstall(cluster.Kubeconfig, kubePrometheusStack, stackValues); err != nil {
+	distro, err := kubectl.GetK8sDistro(cluster.Kubeconfig)
+	if err != nil {
+		return fmt.Errorf("failed to get Kubernetes distro: %w", err)
+	}
+
+	stackValues := getKubePrometheusStackVals(cluster.ReserveNodeForMonitoring, strings.Contains(distro, "k3s"), r.ChartVariables.EnableIPv6, clusterAdd.Public.HTTPURL+"/mimir/api/v1/push")
+	if err := chartInstall(cluster.Kubeconfig, kubePrometheusStack, stackValues, "--version="+r.ChartVariables.KubePrometheusStackVersion); err != nil {
 		return err
 	}
 	chartPath := "https://github.com/rancher/charts/raw/refs/heads/release-v2.15"
@@ -572,18 +607,27 @@ func chartInstallKubePrometheusStack(r *dart.Dart, cluster *tofu.Cluster) error 
 	dashboards := chart{
 		name:      chartNameMonitoringDashboards,
 		namespace: nsCattleMonitoringSystem,
-		path:      fmt.Sprintf("%s/assets/rancher-monitoring-dashboards/rancher-monitoring-dashboards-%s.tgz", chartPath, r.ChartVariables.MonitoringDashboardsVersion),
+		path:      monitoringDashboardsChartPath(chartPath, r.ChartVariables.MonitoringDashboardsVersion),
 	}
 
-	dashboardValues := map[string]any{
-		"global":          map[string]any{"cattle": map[string]any{"clusterId": "local", "clusterName": "local", "systemDefaultRegistry": ""}},
-		"monitoringProxy": monitoringSchedulingValues(cluster.ReserveNodeForMonitoring),
-	}
+	dashboardValues := getMonitoringDashboardsValues(cluster.ReserveNodeForMonitoring, r.ChartVariables.EnableIPv6)
 	if err := chartInstall(cluster.Kubeconfig, dashboards, dashboardValues); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func getMonitoringDashboardsValues(reserveNodeForMonitoring, enableIPv6 bool) map[string]any {
+	return map[string]any{
+		"global":            map[string]any{"clusterId": "local", "clusterName": "local", "systemDefaultRegistry": "", "disableProxyIPv6": !enableIPv6, "cattle": map[string]any{"clusterId": "local", "clusterName": "local", "systemDefaultRegistry": ""}},
+		"monitoringProxy":   monitoringSchedulingValues(reserveNodeForMonitoring),
+		"alertmanagerProxy": map[string]any{"enabled": false},
+	}
+}
+
+func monitoringDashboardsChartPath(chartPath, version string) string {
+	return fmt.Sprintf("%s/assets/rancher-monitoring-dashboards/rancher-monitoring-dashboards-%s.tgz", chartPath, version)
 }
 
 func chartInstallCgroupsExporter(cluster *tofu.Cluster) error {
@@ -662,7 +706,7 @@ func getRancherMonitoringValsJSON(reserveNodeForMonitoring bool, mimirURL string
 	}
 }
 
-func getKubePrometheusStackVals(reserveNodeForMonitoring bool, mimirURL string) map[string]any {
+func getKubePrometheusStackVals(reserveNodeForMonitoring, k3sServer, enableIPv6 bool, mimirURL string) map[string]any {
 	nodeSelector := map[string]any{}
 	tolerations := []any{}
 	if reserveNodeForMonitoring {
@@ -681,9 +725,18 @@ func getKubePrometheusStackVals(reserveNodeForMonitoring bool, mimirURL string) 
 			}},
 		})
 	}
+	serviceIPDualStack := map[string]any{
+		"enabled":        enableIPv6,
+		"ipFamilies":     []any{"IPv4"},
+		"ipFamilyPolicy": "SingleStack",
+	}
+	if enableIPv6 {
+		serviceIPDualStack["ipFamilies"] = []any{"IPv6", "IPv4"}
+		serviceIPDualStack["ipFamilyPolicy"] = "PreferDualStack"
+	}
 
 	return map[string]any{
-		"alertmanager": map[string]any{"enabled": false},
+		"alertmanager": map[string]any{"enabled": false, "service": map[string]any{"ipDualStack": serviceIPDualStack}},
 		"grafana": map[string]any{
 			"nodeSelector": nodeSelector,
 			"tolerations":  tolerations,
@@ -707,14 +760,29 @@ func getKubePrometheusStackVals(reserveNodeForMonitoring bool, mimirURL string) 
 			"podMonitorSelectorNilUsesHelmValues":     false,
 			"additionalScrapeConfigs":                 getCgroupsScrapeConfig(),
 			"remoteWrite":                             remoteWrite,
-		}},
+		}, "service": map[string]any{"ipDualStack": serviceIPDualStack}, "servicePerReplica": map[string]any{"ipDualStack": serviceIPDualStack}, "thanosService": map[string]any{"ipDualStack": serviceIPDualStack}},
+		"kubeControllerManager": map[string]any{"enabled": false, "service": map[string]any{"ipDualStack": serviceIPDualStack}},
+		"coreDns":               map[string]any{"service": map[string]any{"ipDualStack": serviceIPDualStack}},
+		"kubeDns":               map[string]any{"service": map[string]any{"ipDualStack": serviceIPDualStack}},
+		"kubeEtcd":              map[string]any{"enabled": false, "service": map[string]any{"ipDualStack": serviceIPDualStack}},
+		"kubeScheduler":         map[string]any{"enabled": false, "service": map[string]any{"ipDualStack": serviceIPDualStack}},
+		"kubeProxy":             map[string]any{"enabled": false, "service": map[string]any{"ipDualStack": serviceIPDualStack}},
+		"prometheusOperator": map[string]any{
+			"service":           map[string]any{"ipDualStack": serviceIPDualStack},
+			"admissionWebhooks": map[string]any{"deployment": map[string]any{"service": map[string]any{"ipDualStack": serviceIPDualStack}}},
+		},
 		"prometheus-node-exporter": map[string]any{
 			"hostRootFsMount": map[string]any{"enabled": false},
 			"nodeSelector":    nodeSelector,
 			"tolerations":     tolerations,
+			"service":         map[string]any{"ipDualStack": serviceIPDualStack},
 		},
-		"kube-state-metrics": map[string]any{"nodeSelector": nodeSelector, "tolerations": tolerations},
-		"prometheusOperator": map[string]any{"nodeSelector": nodeSelector, "tolerations": tolerations},
+		"kube-state-metrics": map[string]any{
+			"nodeSelector": nodeSelector,
+			"tolerations":  tolerations,
+			"service":      map[string]any{"ipDualStack": serviceIPDualStack},
+		},
+		"thanosRuler": map[string]any{"service": map[string]any{"ipDualStack": serviceIPDualStack}},
 		"global": map[string]any{
 			"cattle": map[string]any{
 				"clusterId":             "local",
@@ -723,10 +791,7 @@ func getKubePrometheusStackVals(reserveNodeForMonitoring bool, mimirURL string) 
 			},
 		},
 		"systemDefaultRegistry": "",
-		"kubeEtcd":              map[string]any{"enabled": false},
-		"kubeControllerManager": map[string]any{"enabled": false},
-		"kubeScheduler":         map[string]any{"enabled": false},
-		"kubeProxy":             map[string]any{"enabled": false},
+		"k3sServer":             k3sServer,
 	}
 }
 
