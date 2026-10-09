@@ -41,6 +41,7 @@ type ClusterTemplate struct {
 
 type ChartVariables struct {
 	ForceKubePrometheusStack    bool             `yaml:"force_kube_prometheus_stack"`
+	EnableIPv6                  bool             `yaml:"enable_ipv6"`
 	RancherAppsRepoOverride     string           `yaml:"rancher_apps_repo_override"`
 	RancherMonitoringVersion    string           `yaml:"rancher_monitoring_version"`
 	KubePrometheusStackVersion  string           `yaml:"kube_prometheus_stack_version"`
@@ -73,6 +74,7 @@ func defaultDart() Dart {
 		TofuParallelism: 10,
 		TofuVariables:   map[string]any{},
 		ChartVariables: ChartVariables{
+			EnableIPv6:                  false,
 			RancherReplicas:             1,
 			DownstreamRancherMonitoring: false,
 			AdminPassword:               "adminadminadmin",
