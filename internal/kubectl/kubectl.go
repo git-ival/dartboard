@@ -367,9 +367,11 @@ func GetK8sVersion(kubePath string) (string, error) {
 	if err := Version(kubePath, &versionOutput); err != nil {
 		return "", err
 	}
+
 	if versionOutput.ServerVersion.GitVersion != "" {
 		return versionOutput.ServerVersion.GitVersion, nil
 	}
+
 	return "", fmt.Errorf("cannot determine Kubernetes version")
 }
 
@@ -378,12 +380,15 @@ func GetK8sDistro(kubePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	if strings.Contains(version, "rke2") {
 		return "rke2", nil
 	}
+
 	if strings.Contains(version, "k3s") {
 		return "k3s", nil
 	}
+
 	return "", fmt.Errorf("cannot determine Kubernetes distro")
 }
 

@@ -138,6 +138,7 @@ chart_variables:
   rancher_replicas: 1
   downstream_rancher_monitoring: true
   admin_password: adminadminadmin
+  # grafana_admin_password: adminadminadmin
   # rancher_apps_repo_override: # must be the "raw" link not the "blob" link ex: https://github.com/rancher/charts/raw/dev-v2.11 vs https://github.com/rancher/charts/blob/dev-v2.12
   force_kube_prometheus_stack: false
   enable_ipv6: false
