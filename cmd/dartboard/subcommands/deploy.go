@@ -596,7 +596,7 @@ func chartInstallKubePrometheusStack(r *dart.Dart, cluster *tofu.Cluster) error 
 		return fmt.Errorf("failed to get Kubernetes distro: %w", err)
 	}
 
-	stackValues := getKubePrometheusStackVals(cluster.ReserveNodeForMonitoring, strings.Contains(distro, "k3s"), r.ChartVariables.EnableIPv6, clusterAdd.Public.HTTPURL+"/mimir/api/v1/push")
+	stackValues := getKubePrometheusStackVals(cluster.ReserveNodeForMonitoring, strings.Contains(distro, "k3s"), r.ChartVariables.EnableIPv6, r.ChartVariables.GrafanaAdminPassword, clusterAdd.Public.HTTPURL+"/mimir/api/v1/push")
 	if err := chartInstall(cluster.Kubeconfig, kubePrometheusStack, stackValues, "--version="+r.ChartVariables.KubePrometheusStackVersion); err != nil {
 		return err
 	}
@@ -614,8 +614,13 @@ func chartInstallKubePrometheusStack(r *dart.Dart, cluster *tofu.Cluster) error 
 	if err := chartInstall(cluster.Kubeconfig, dashboards, dashboardValues); err != nil {
 		return err
 	}
+	fmt.Printf("Grafana admin password (admin): %s\n", kubePrometheusStackGrafanaPasswordCommand())
 
 	return nil
+}
+
+func kubePrometheusStackGrafanaPasswordCommand() string {
+	return "kubectl -n cattle-monitoring-system get secret kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | openssl base64 -d -A; echo"
 }
 
 func getMonitoringDashboardsValues(reserveNodeForMonitoring, enableIPv6 bool) map[string]any {
@@ -706,7 +711,7 @@ func getRancherMonitoringValsJSON(reserveNodeForMonitoring bool, mimirURL string
 	}
 }
 
-func getKubePrometheusStackVals(reserveNodeForMonitoring, k3sServer, enableIPv6 bool, mimirURL string) map[string]any {
+func getKubePrometheusStackVals(reserveNodeForMonitoring, k3sServer, enableIPv6 bool, grafanaAdminPassword, mimirURL string) map[string]any {
 	nodeSelector := map[string]any{}
 	tolerations := []any{}
 	if reserveNodeForMonitoring {
@@ -735,7 +740,7 @@ func getKubePrometheusStackVals(reserveNodeForMonitoring, k3sServer, enableIPv6 
 		serviceIPDualStack["ipFamilyPolicy"] = "PreferDualStack"
 	}
 
-	return map[string]any{
+	values := map[string]any{
 		"alertmanager": map[string]any{"enabled": false, "service": map[string]any{"ipDualStack": serviceIPDualStack}},
 		"grafana": map[string]any{
 			"nodeSelector": nodeSelector,
@@ -793,6 +798,10 @@ func getKubePrometheusStackVals(reserveNodeForMonitoring, k3sServer, enableIPv6 
 		"systemDefaultRegistry": "",
 		"k3sServer":             k3sServer,
 	}
+	if grafanaAdminPassword != "" {
+		values["grafana"].(map[string]any)["adminPassword"] = grafanaAdminPassword
+	}
+	return values
 }
 
 func monitoringSchedulingValues(reserveNodeForMonitoring bool) map[string]any {

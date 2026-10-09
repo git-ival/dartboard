@@ -46,6 +46,7 @@ type ChartVariables struct {
 	RancherMonitoringVersion    string           `yaml:"rancher_monitoring_version"`
 	KubePrometheusStackVersion  string           `yaml:"kube_prometheus_stack_version"`
 	MonitoringDashboardsVersion string           `yaml:"rancher_monitoring_dashboards_version"`
+	GrafanaAdminPassword        string           `yaml:"grafana_admin_password"`
 	AdminPassword               string           `yaml:"admin_password"`
 	UserPassword                string           `yaml:"user_password"`
 	RancherVersion              string           `yaml:"rancher_version"`
