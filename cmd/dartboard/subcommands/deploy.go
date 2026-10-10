@@ -706,6 +706,10 @@ func getRancherMonitoringValsJSON(reserveNodeForMonitoring bool, mimirURL string
 			},
 		},
 		"prometheus-adapter": monitoringRestrictions,
+		"prometheus-node-exporter": map[string]any{
+			"nodeSelector": map[string]any{"kubernetes.io/os": "linux"},
+			"tolerations":  []any{map[string]any{"operator": "Exists"}},
+		},
 		"kube-state-metrics": monitoringRestrictions,
 		"prometheusOperator": monitoringRestrictions,
 		"global": map[string]any{
@@ -784,13 +788,22 @@ func getKubePrometheusStackVals(reserveNodeForMonitoring, k3sServer, enableIPv6 
 		"kubeScheduler":         map[string]any{"enabled": false, "service": map[string]any{"ipDualStack": serviceIPDualStack}},
 		"kubeProxy":             map[string]any{"enabled": false, "service": map[string]any{"ipDualStack": serviceIPDualStack}},
 		"prometheusOperator": map[string]any{
-			"service":           map[string]any{"ipDualStack": serviceIPDualStack},
-			"admissionWebhooks": map[string]any{"deployment": map[string]any{"service": map[string]any{"ipDualStack": serviceIPDualStack}}},
+			"nodeSelector": nodeSelector,
+			"tolerations":  tolerations,
+			"service":      map[string]any{"ipDualStack": serviceIPDualStack},
+			"admissionWebhooks": map[string]any{
+				"patch": map[string]any{"nodeSelector": nodeSelector, "tolerations": tolerations},
+				"deployment": map[string]any{
+					"nodeSelector": nodeSelector,
+					"tolerations":  tolerations,
+					"service":      map[string]any{"ipDualStack": serviceIPDualStack},
+				},
+			},
 		},
 		"prometheus-node-exporter": map[string]any{
 			"hostRootFsMount": map[string]any{"enabled": false},
-			"nodeSelector":    nodeSelector,
-			"tolerations":     tolerations,
+			"nodeSelector":    map[string]any{"kubernetes.io/os": "linux"},
+			"tolerations":     []any{map[string]any{"operator": "Exists"}},
 			"service":         map[string]any{"ipDualStack": serviceIPDualStack},
 		},
 		"kube-state-metrics": map[string]any{

@@ -1,9 +1,44 @@
 package subcommands
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestMonitoringNodeExporterAndReservedNodeScheduling(t *testing.T) {
+	for _, reserved := range []bool{false, true} {
+		legacy := getRancherMonitoringValsJSON(reserved, "")
+		stack := getKubePrometheusStackVals(reserved, false, false, "", "")
+		for _, values := range []map[string]any{legacy, stack} {
+			exporter := values["prometheus-node-exporter"].(map[string]any)
+			if !reflect.DeepEqual(exporter["nodeSelector"], map[string]any{"kubernetes.io/os": "linux"}) {
+				t.Fatalf("reserved=%t: node exporter must cover all Linux nodes: %#v", reserved, exporter)
+			}
+			if !reflect.DeepEqual(exporter["tolerations"], []any{map[string]any{"operator": "Exists"}}) {
+				t.Fatalf("reserved=%t: node exporter must tolerate control-plane and monitoring taints", reserved)
+			}
+		}
+		wantSelector := map[string]any{}
+		wantTolerations := []any{}
+		if reserved {
+			wantSelector["monitoring"] = "true"
+			wantTolerations = []any{map[string]any{"key": "monitoring", "operator": "Exists", "effect": "NoSchedule"}}
+		}
+		operator := stack["prometheusOperator"].(map[string]any)
+		webhooks := operator["admissionWebhooks"].(map[string]any)
+		for _, component := range []map[string]any{
+			stack["grafana"].(map[string]any),
+			stack["prometheus"].(map[string]any)["prometheusSpec"].(map[string]any),
+			stack["kube-state-metrics"].(map[string]any), operator,
+			webhooks["patch"].(map[string]any), webhooks["deployment"].(map[string]any),
+		} {
+			if !reflect.DeepEqual(component["nodeSelector"], wantSelector) || !reflect.DeepEqual(component["tolerations"], wantTolerations) {
+				t.Fatalf("reserved=%t: incorrect monitoring component scheduling: %#v", reserved, component)
+			}
+		}
+	}
+}
 
 func TestMonitoringDashboardsChartPathUsesReleaseRepo(t *testing.T) {
 	got := monitoringDashboardsChartPath("https://github.com/rancher/charts/raw/refs/heads/release-v2.15", "110.0.1+up0.1.4")
