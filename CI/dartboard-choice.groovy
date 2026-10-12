@@ -4,7 +4,7 @@
 
 def agentLabel = 'jenkins-qa-jenkins-agent'
 if (params.HARVESTER_KUBECONFIG) {
-    agentLabel = 'vsphere-vpn-1'
+    agentLabel = 'harvester-vpn-1'
 }
 
 def scmWorkspace
