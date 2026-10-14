@@ -29,13 +29,13 @@ def choiceParameters(command, deploymentIdValue) {
   return [
     string(name: 'REPO', value: params.REPO ?: ''),
     string(name: 'BRANCH', value: params.BRANCH ?: ''),
-    string(name: 'DART_FILE', value: params.DART_FILE ?: ''),
-    string(name: 'HARVESTER_KUBECONFIG', value: params.HARVESTER_KUBECONFIG ?: ''),
+    text(name: 'DART_FILE', value: params.DART_FILE ?: ''),
+    text(name: 'HARVESTER_KUBECONFIG', value: params.HARVESTER_KUBECONFIG ?: ''),
     string(name: 'DARTBOARD_COMMAND', value: command),
     string(name: 'DEPLOYMENT_ID', value: deploymentIdValue ?: ''),
-    string(name: 'SSH_PEM_KEY', value: params.SSH_PEM_KEY ?: ''),
+    text(name: 'SSH_PEM_KEY', value: params.SSH_PEM_KEY ?: ''),
     string(name: 'SSH_KEY_NAME', value: params.SSH_KEY_NAME ?: ''),
-    string(name: 'EXTRA_ENV_VARS', value: params.EXTRA_ENV_VARS ?: ''),
+    text(name: 'EXTRA_ENV_VARS', value: params.EXTRA_ENV_VARS ?: ''),
     string(name: 'S3_BUCKET_NAME', value: params.S3_BUCKET_NAME ?: ''),
     string(name: 'S3_BUCKET_REGION', value: params.S3_BUCKET_REGION ?: '')
   ]
@@ -168,7 +168,7 @@ pipeline {
                 string(name: 'S3_BUCKET_REGION', value: params.S3_BUCKET_REGION ?: ''),
                 string(name: 'QASE_TESTOPS_PROJECT', value: params.QASE_TESTOPS_PROJECT ?: ''),
                 string(name: 'QASE_TESTOPS_RUN_ID', value: params.QASE_TESTOPS_RUN_ID ?: ''),
-                string(name: 'K6_ENV', value: params.K6_ENV ?: '')
+                text(name: 'K6_ENV', value: params.K6_ENV ?: '')
               ],
               propagate: false,
               wait: true
