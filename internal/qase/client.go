@@ -156,6 +156,7 @@ func (c *CustomUnifiedClient) GetRunResultStatusCounts(ctx context.Context, proj
 	})
 
 	const pageSize int32 = 100
+
 	statusCounts := make(map[string]int64)
 
 	for offset := int32(0); ; offset += pageSize {

@@ -191,6 +191,7 @@ func countUpstreamNodes(r *dart.Dart) (server any, agent any) {
 	}
 
 	server, agent = vars["server_count"], vars["agent_count"]
+
 	return server, agent
 }
 
