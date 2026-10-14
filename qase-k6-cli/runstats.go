@@ -35,7 +35,7 @@ func getRunStats(runID string) {
 		logrus.Fatalf("Failed to get test run: %v", err)
 	}
 
-	//parse the run stats from the test run
+	// parse the run stats from the test run
 	var total, passed, failed int64
 	if stats := run.Stats; stats != nil {
 		total = int64(stats.GetTotal())
@@ -52,13 +52,14 @@ func getRunStats(runID string) {
 	if count, ok := statusCounts[qase.StatusPassed]; ok && passed == 0 {
 		passed = count
 	}
+
 	if count, ok := statusCounts[qase.StatusFailed]; ok && failed == 0 {
 		failed = count
 	}
 
 	runURL := fmt.Sprintf("https://app.qase.io/run/%s/dashboard/%d", projectID, runIDVal)
 
-	//output the run stats as environment variable lines for CI pipelines
+	// output the run stats as environment variable lines for CI pipelines
 	fmt.Printf("QASE_RUN_TOTAL=%d\n", total)
 	fmt.Printf("QASE_RUN_PASSED=%d\n", passed)
 	fmt.Printf("QASE_RUN_FAILED=%d\n", failed)
