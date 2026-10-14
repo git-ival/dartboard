@@ -168,6 +168,7 @@ pipeline {
                 string(name: 'S3_BUCKET_REGION', value: params.S3_BUCKET_REGION ?: ''),
                 string(name: 'QASE_TESTOPS_PROJECT', value: params.QASE_TESTOPS_PROJECT ?: ''),
                 string(name: 'QASE_TESTOPS_RUN_ID', value: params.QASE_TESTOPS_RUN_ID ?: ''),
+                booleanParam(name: 'K6_HTTP_DEBUG', value: params.K6_HTTP_DEBUG ?: false),
                 text(name: 'K6_ENV', value: params.K6_ENV ?: '')
               ],
               propagate: false,

@@ -20,6 +20,10 @@ def numTestCases
 pipeline {
   agent { label agentLabel }
 
+  parameters {
+    booleanParam(name: 'K6_HTTP_DEBUG', defaultValue: false, description: 'Enable full HTTP request/response debug output for k6 test runs')
+  }
+
   environment {
     IMAGE_NAME          = 'dartboard'
     ARTIFACTS_DIR       = 'deployment-artifacts'
@@ -251,6 +255,7 @@ pipeline {
               def htmlReport = "${k6ReportPrefix}-summary.html"
               def webDashboardReport = "k6-web-dashboard-${safeProject}-${caseId}-${index}.html"
               def safeK6Env = params.K6_ENV ? params.K6_ENV.replaceAll(sanitizeK6EnvRegex, "") : ""
+              def httpDebugFlag = params.K6_HTTP_DEBUG?.toString()?.toBoolean() ? '--http-debug=full' : ''
 
               // Construct environment variables content
               // We set QASE_TEST_CASE_ID for the reporter
@@ -308,7 +313,7 @@ ${safeK6Env}
                             # sed -i "s|export .*handleSummary|// &|" "\$MODIFIED_TEST"
 
                             echo "Running k6 script (Native Dashboard Mode): \$MODIFIED_TEST"
-                            k6 run --no-color "\$MODIFIED_TEST" | tee "${summaryLog}" || {
+                            k6 run --no-color ${httpDebugFlag} "\$MODIFIED_TEST" | tee "${summaryLog}" || {
                                 K6_EXIT_CODE=\$?
                                 if [ "\${K6_EXIT_CODE}" -ne 99 ]; then
                                     exit \${K6_EXIT_CODE}
