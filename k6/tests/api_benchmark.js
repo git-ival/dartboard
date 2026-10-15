@@ -23,7 +23,7 @@ export const handleSummary = customHandleSummary;
 // Option setting
 export const options = {
   insecureSkipTLSVerify: true,
-  httpDebug: true,
+  httpDebug: "true",
 
   scenarios: {
     list: {
