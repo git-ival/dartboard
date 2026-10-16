@@ -15,17 +15,17 @@ WORKDIR $WORKSPACE
 
 RUN apk add --no-cache \
     # renovate: datasource=repology depName=alpine_3_24/bash versioning=loose
-    bash~=5.3.9-r1 \
+    bash~=5.3.9 \
     # renovate: datasource=repology depName=alpine_3_24/tar versioning=loose
-    tar~=1.35-r5 \
+    tar~=1.35 \
     # renovate: datasource=repology depName=alpine_3_24/unzip versioning=loose
-    unzip~=6.0-r16 \
+    unzip~=6.0 \
     # renovate: datasource=repology depName=alpine_3_24/wget versioning=loose
-    wget~=1.25.0-r3 \
+    wget~=1.25.0 \
     # renovate: datasource=repology depName=alpine_3_24/curl versioning=loose
-    curl~=8.22.0-r0 \
+    curl~=8.22.0 \
     # renovate: datasource=repology depName=alpine_3_24/make versioning=loose
-    make~=4.4.1-r4
+    make~=4.4.1
 
 COPY [".", "$WORKSPACE"]
 
@@ -50,19 +50,19 @@ USER root
 RUN apk update && \
     apk add --no-cache \
     # renovate: datasource=repology depName=alpine_3_24/openssh-client versioning=loose
-    openssh-client~=10.3_p1-r1 \
+    openssh-client~=10.3_p1 \
     # renovate: datasource=repology depName=alpine_3_24/netcat-openbsd versioning=loose
-    netcat-openbsd~=1.234.1-r0 \
+    netcat-openbsd~=1.234.1 \
     # renovate: datasource=repology depName=alpine_3_24/bash versioning=loose
-    bash~=5.3.9-r1 \
+    bash~=5.3.9 \
     # renovate: datasource=repology depName=alpine_3_24/gettext versioning=loose
-    gettext~=1.0-r0 \
+    gettext~=1.0 \
     # renovate: datasource=repology depName=alpine_3_24/zip versioning=loose
-    zip~=3.0-r13 \
+    zip~=3.0 \
     # renovate: datasource=repology depName=alpine_3_24/unzip versioning=loose
-    unzip~=6.0-r16 \
+    unzip~=6.0 \
     # renovate: datasource=repology depName=alpine_3_24/yq-go versioning=loose
-    yq-go~=4.53.3-r1
+    yq-go~=4.53.3
 
 # switch back to the non-root user
 USER k6
