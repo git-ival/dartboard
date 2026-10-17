@@ -330,7 +330,6 @@ ${safeK6Env}
               } catch (Exception e) {
                   echo "k6 run failed for case ${caseId}, but continuing to report failure/partial results."
               }
-              sh "ls -al"
 
               // 3. Report to Qase
               withCredentials([string(credentialsId: "QASE_AUTOMATION_TOKEN", variable: "QASE_TESTOPS_API_TOKEN")]) {
@@ -352,6 +351,7 @@ ${safeK6Env}
                         '''
                   """
               }
+              sleep 15
             }
           }
         }
