@@ -58,7 +58,7 @@ func ParseKubeconfig(kubeconfigPath string) (*Kubeconfig, error) {
 
 	err = yaml.Unmarshal(kubeconfigBytes, &kubeconfig)
 	if err != nil {
-		return nil, fmt.Errorf("error unmarshaling kubeconfig YAML for %s: %w", kubeconfigBytes, err)
+		return nil, fmt.Errorf("error unmarshaling kubeconfig YAML: %w", err)
 	}
 
 	return &kubeconfig, nil

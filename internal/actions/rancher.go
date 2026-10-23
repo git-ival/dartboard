@@ -50,18 +50,18 @@ func SetupRancherClient(rancherConfig *rancher.Config, bootstrapPassword string,
 		Password: bootstrapPassword,
 	}
 
-	logrus.Debugf("Rancher Config: Host: %s AdminToken: %s Insecure: %t", rancherConfig.Host, rancherConfig.AdminToken, *rancherConfig.Insecure)
+	logrus.Debugf("Rancher Config: Host: %s Insecure: %t", rancherConfig.Host, *rancherConfig.Insecure)
 
 	adminToken, err := shepherdtokens.GenerateUserToken(adminUser, rancherConfig.Host)
 	if err != nil {
-		return nil, fmt.Errorf("error while creating Admin Token with config %v:\n%v", &rancherConfig, err)
+		return nil, fmt.Errorf("error while creating Admin Token for host %s: %w", rancherConfig.Host, err)
 	}
 
 	rancherConfig.AdminToken = adminToken.Token
 
 	client, err := rancher.NewClientForConfig(rancherConfig.AdminToken, rancherConfig, session)
 	if err != nil {
-		return nil, fmt.Errorf("error while setting up Rancher client with config %v:\n%v", rancherConfig, err)
+		return nil, fmt.Errorf("error while setting up Rancher client for host %s: %w", rancherConfig.Host, err)
 	}
 
 	err = pipeline.PostRancherInstall(client, rancherConfig.AdminPassword)
@@ -207,13 +207,16 @@ func provisionClusterWithRunner[J JobDataTypes](br *SequencedBatchRunner[J], tem
 }
 
 func ImportDownstreamClusters(r *dart.Dart, clusters []tofu.Cluster, rancherClient *rancher.Client, rancherConfig *rancher.Config) error {
-	if r.ClusterBatchSize <= 0 {
-		panic("ClusterBatchSize must be > 0")
-	}
-
 	if len(clusters) == 0 {
 		logrus.Info("No importable Clusters were provided.")
-		return nil
+
+		_, err := LoadClusterState(fmt.Sprintf("%s/%s", r.TofuWorkspaceStatePath, ClustersStateFile))
+
+		return err
+	}
+
+	if r.ClusterBatchSize <= 0 {
+		panic("ClusterBatchSize must be > 0")
 	}
 
 	err := ImportClustersInBatches(r, clusters, rancherClient, rancherConfig)

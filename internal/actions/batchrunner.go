@@ -40,16 +40,11 @@ type JobDataTypes interface {
 // SequencedBatchRunner contains all the channels and WaitGroups needed
 // for processing a batch of Clusters concurrently with sequenced state updates
 type SequencedBatchRunner[J JobDataTypes] struct {
-	// Channel to sequence updates
-	seqCh chan struct{}
-	// Channel for all write requests
-	Updates chan stateUpdate
-	// Channel for batch jobs
-	Jobs chan J
-	// Channel for each individual job's results/error output
-	Results chan jobResult
-
-	// WaitGroups for Job workers and the Updates channel which sequences writes to the ClustarStatus state file
+	writerErr error
+	seqCh     chan struct{}
+	Updates   chan stateUpdate
+	Jobs      chan J
+	Results   chan jobResult
 	wgWorkers sync.WaitGroup
 	wgWriter  sync.WaitGroup
 }
@@ -93,6 +88,7 @@ func (br *SequencedBatchRunner[J]) Run(batch []J,
 	close(br.Jobs)
 
 	numSkipped, batchErr := collectBatchResults(br.Results, len(batch))
+	batchErr = errors.Join(batchErr, br.Wait())
 	sleepAfter := numSkipped < len(batch)/2
 
 	// After finishing this batch:
@@ -106,9 +102,6 @@ func (br *SequencedBatchRunner[J]) Run(batch []J,
 		// Otherwise, go straight into the next batch
 		logrus.Infof("Batch done: %d/%d skipped; continuing without sleep.", numSkipped, len(batch))
 	}
-
-	// Clean up
-	br.Wait()
 
 	return batchErr
 }
@@ -137,11 +130,13 @@ func collectBatchResults(results <-chan jobResult, count int) (int, error) {
 	return numSkipped, fmt.Errorf("%w with %d job errors: %w", errBatchFailed, len(jobErrs), errors.Join(jobErrs...))
 }
 
-func (br *SequencedBatchRunner[J]) Wait() {
+func (br *SequencedBatchRunner[J]) Wait() error {
 	br.wgWorkers.Wait()
 	close(br.Updates)
 	br.wgWriter.Wait()
 	close(br.Results)
+
+	return br.writerErr
 }
 
 // writer serializes all state updates and persists immediately
@@ -172,6 +167,10 @@ func (br *SequencedBatchRunner[J]) writer(statuses map[string]*ClusterStatus, st
 
 		if err := SaveClusterState(statePath, statuses); err != nil {
 			logrus.Errorf("failed to save state for %s:%s: %v", u.Name, u.Stage, err)
+
+			if br.writerErr == nil {
+				br.writerErr = fmt.Errorf("%w: failed to save state for %s:%s: %w", errBatchFailed, u.Name, u.Stage, err)
+			}
 		}
 
 		stateMutex.Unlock()

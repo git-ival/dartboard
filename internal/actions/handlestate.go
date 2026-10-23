@@ -23,8 +23,6 @@ type ClusterStatus struct {
 
 const ClustersStateFile = "clusters_state.yaml"
 
-// Setup an "enum" for handling stateUpdate "Stage" logic
-// See https://gobyexample.com/enums
 type Stage int
 
 const (
@@ -68,8 +66,27 @@ func SaveClusterState(filePath string, statuses map[string]*ClusterStatus) error
 		return fmt.Errorf("failed to create Cluster state directory: %w", err)
 	}
 
-	if err := os.WriteFile(filePath, data, 0o644); err != nil {
+	file, err := os.CreateTemp(filepath.Dir(filePath), ".clusters-state-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary Cluster state file: %w", err)
+	}
+	defer os.Remove(file.Name())
+	defer file.Close()
+
+	if _, err := file.Write(data); err != nil {
 		return fmt.Errorf("failed to write Cluster state file: %w", err)
+	}
+
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync Cluster state file: %w", err)
+	}
+
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("failed to close Cluster state file: %w", err)
+	}
+
+	if err := os.Rename(file.Name(), filePath); err != nil {
+		return fmt.Errorf("failed to replace Cluster state file: %w", err)
 	}
 
 	return nil

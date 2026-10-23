@@ -32,10 +32,10 @@ func Destroy(ctx context.Context, cli *cli.Command) error {
 
 	clusterStatePath := fmt.Sprintf("%s/%s", r.TofuWorkspaceStatePath, actions.ClustersStateFile)
 	// TODO: Implement a flag to -only- destroy ClusterStatus state + Clusters registered in Rancher
-	err = actions.DestroyClusterState(clusterStatePath)
+	err = tf.Destroy()
 	if err != nil {
 		return err
 	}
 
-	return tf.Destroy()
+	return actions.DestroyClusterState(clusterStatePath)
 }

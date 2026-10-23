@@ -49,6 +49,15 @@ lint: internal/vendored/bin
 	golangci-lint run
 
 # =============================================================================
+# Testing
+# =============================================================================
+
+.PHONY: test
+test:
+	go test -race ./...
+	cd qase-k6-cli && go test -race ./...
+
+# =============================================================================
 # OpenTofu validation
 # =============================================================================
 
@@ -79,7 +88,7 @@ tofu-validate: internal/vendored/bin
 # =============================================================================
 
 .PHONY: verify
-verify: go-mod-verify build lint
+verify: go-mod-verify build test lint
 
 .PHONY: verify-tofu
 verify-tofu: tofu-fmt-check tofu-validate
