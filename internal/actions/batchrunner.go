@@ -1,209 +1,119 @@
 package actions
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"runtime"
+	"math"
 	"sync"
 	"time"
 
-	"github.com/rancher/dartboard/internal/dart"
-	"github.com/rancher/dartboard/internal/tofu"
-	"github.com/rancher/shepherd/clients/rancher"
-	shepherddefaults "github.com/rancher/shepherd/extensions/defaults"
-	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
+	kwait "k8s.io/apimachinery/pkg/util/wait"
 )
 
-var errBatchFailed = errors.New("batch failed")
+var errCheckpointFailed = errors.New("cluster checkpoint failed")
 
-var maxWorkers = runtime.GOMAXPROCS(0) * 2
-
-// Mutex to sync map[string]*ClusterStatus mutations and state file writes
-var stateMutex sync.Mutex
-
-// stateUpdate is a simple "signaling" struct for the file writer goroutine to persist state
-type stateUpdate struct {
-	Completed time.Time
-	Name      string
-	Stage     Stage
+type clusterPacer struct {
+	next     time.Time
+	interval time.Duration
+	jitter   float64
+	mu       sync.Mutex
 }
 
-type jobResult struct {
-	err     error
-	skipped bool
-}
-
-type JobDataTypes interface {
-	tofu.Cluster | dart.ClusterTemplate | tofu.CustomCluster
-}
-
-// SequencedBatchRunner contains all the channels and WaitGroups needed
-// for processing a batch of Clusters concurrently with sequenced state updates
-type SequencedBatchRunner[J JobDataTypes] struct {
-	// Channel to sequence updates
-	seqCh chan struct{}
-	// Channel for all write requests
-	Updates chan stateUpdate
-	// Channel for batch jobs
-	Jobs chan J
-	// Channel for each individual job's results/error output
-	Results chan jobResult
-
-	// WaitGroups for Job workers and the Updates channel which sequences writes to the ClustarStatus state file
-	wgWorkers sync.WaitGroup
-	wgWriter  sync.WaitGroup
-}
-
-// NewSequencedBatchRunner constructs a new runner for one batch
-func NewSequencedBatchRunner[J JobDataTypes](batchSize int) *SequencedBatchRunner[J] {
-	br := &SequencedBatchRunner[J]{
-		Updates: make(chan stateUpdate, batchSize*3),
-		seqCh:   make(chan struct{}, 1),
-		Jobs:    make(chan J, batchSize),
-		Results: make(chan jobResult, batchSize),
+func newClusterPacer(interval time.Duration, jitter float64) (*clusterPacer, error) {
+	if interval < 0 {
+		return nil, fmt.Errorf("cluster_start_interval must not be negative")
 	}
-	// seed the sequencer
-	br.seqCh <- struct{}{}
 
-	return br
+	if math.IsNaN(jitter) || math.IsInf(jitter, 0) || jitter < 0 || jitter > 1 {
+		return nil, fmt.Errorf("cluster_start_jitter must be between zero and one")
+	}
+
+	return &clusterPacer{interval: interval, jitter: jitter}, nil
 }
 
-// Run executes the batch: starts the file writer, workers, enqueues jobs, collects results
-func (br *SequencedBatchRunner[J]) Run(batch []J,
-	statuses map[string]*ClusterStatus, statePath string, client *rancher.Client,
-	config *rancher.Config,
+func (pacer *clusterPacer) wait(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if pacer.interval == 0 {
+		return nil
+	}
+
+	pacer.mu.Lock()
+
+	start := time.Now()
+	if pacer.next.After(start) {
+		start = pacer.next
+	}
+
+	interval := pacer.interval
+	if pacer.jitter > 0 {
+		interval = kwait.Jitter(interval, pacer.jitter)
+	}
+
+	pacer.next = start.Add(interval)
+	pacer.mu.Unlock()
+
+	timer := time.NewTimer(time.Until(start))
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return ctx.Err()
+	}
+}
+
+func runClusterJobs[Job any](ctx context.Context, jobs []Job, concurrency int,
+	name func(Job) string, run func(context.Context, Job) error,
 ) error {
-	// Start writer
-	br.wgWriter.Add(1)
-
-	go br.writer(statuses, statePath)
-
-	// Spawn workers
-	for range maxWorkers {
-		br.wgWorkers.Add(1)
-
-		go br.worker(statuses, client, config)
+	if concurrency <= 0 {
+		return fmt.Errorf("cluster_batch_size must be greater than zero")
 	}
 
-	// Enqueue and close jobs
-	for _, c := range batch {
-		br.Jobs <- c
-	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	close(br.Jobs)
+	var group errgroup.Group
+	group.SetLimit(concurrency)
 
-	numSkipped, batchErr := collectBatchResults(br.Results, len(batch))
-	sleepAfter := numSkipped < len(batch)/2
+	jobErrors := make([]error, len(jobs))
+	seen := make(map[string]bool, len(jobs))
 
-	// After finishing this batch:
-	if batchErr != nil {
-		logrus.Errorf("Batch completed with failures: %v", batchErr)
-	} else if sleepAfter {
-		// If fewer than half were skipped, sleep briefly
-		logrus.Infof("Batch done: %d/%d skipped; sleeping before next batch.", numSkipped, len(batch))
-		time.Sleep(shepherddefaults.TwoMinuteTimeout)
-	} else {
-		// Otherwise, go straight into the next batch
-		logrus.Infof("Batch done: %d/%d skipped; continuing without sleep.", numSkipped, len(batch))
-	}
+	for index, job := range jobs {
+		if ctx.Err() != nil {
+			break
+		}
 
-	// Clean up
-	br.Wait()
-
-	return batchErr
-}
-
-func collectBatchResults(results <-chan jobResult, count int) (int, error) {
-	numSkipped := 0
-
-	var jobErrs []error
-
-	for range count {
-		result := <-results
-		if result.err != nil {
-			jobErrs = append(jobErrs, result.err)
+		jobName := name(job)
+		if seen[jobName] {
+			jobErrors[index] = fmt.Errorf("duplicate cluster identity %q", jobName)
 			continue
 		}
 
-		if result.skipped {
-			numSkipped++
-		}
+		seen[jobName] = true
+
+		group.Go(func() error {
+			if ctx.Err() != nil {
+				return nil
+			}
+
+			if err := run(ctx, job); err != nil {
+				jobErrors[index] = fmt.Errorf("cluster %s: %w", jobName, err)
+				if errors.Is(err, errCheckpointFailed) {
+					cancel()
+				}
+			}
+
+			return nil
+		})
 	}
 
-	if len(jobErrs) == 0 {
-		return numSkipped, nil
-	}
+	groupErr := group.Wait()
 
-	return numSkipped, fmt.Errorf("%w with %d job errors: %w", errBatchFailed, len(jobErrs), errors.Join(jobErrs...))
-}
-
-func (br *SequencedBatchRunner[J]) Wait() {
-	br.wgWorkers.Wait()
-	close(br.Updates)
-	br.wgWriter.Wait()
-	close(br.Results)
-}
-
-// writer serializes all state updates and persists immediately
-func (br *SequencedBatchRunner[J]) writer(statuses map[string]*ClusterStatus, statePath string) {
-	defer br.wgWriter.Done()
-
-	for u := range br.Updates {
-		stateMutex.Lock()
-		logrus.Debugf("\nIN WRITER\n")
-		logrus.Debugf("\n%v\n", statuses)
-		cs := statuses[u.Name]
-
-		cs.Stage = u.Stage
-		switch u.Stage {
-		case StageNew:
-			cs.New = true
-		case StageInfra:
-			cs.Infra = true
-		case StageCreated:
-			cs.Created = true
-		case StageImported:
-			cs.Imported = true
-		case StageProvisioned:
-			cs.Provisioned = true
-		case StageRegistered:
-			cs.Registered = true
-		}
-
-		if err := SaveClusterState(statePath, statuses); err != nil {
-			logrus.Errorf("failed to save state for %s:%s: %v", u.Name, u.Stage, err)
-		}
-
-		stateMutex.Unlock()
-	}
-}
-
-// worker consumes Jobs, calls the proper handler based on the Job Type, signals Updates and Results
-func (br *SequencedBatchRunner[J]) worker(statuses map[string]*ClusterStatus,
-	client *rancher.Client, config *rancher.Config,
-) {
-	defer br.wgWorkers.Done()
-
-	for job := range br.Jobs {
-		var (
-			skipped bool
-			err     error
-		)
-		// Use type assertion to determine which function to call
-
-		switch typedJob := any(job).(type) {
-		case tofu.Cluster:
-			skipped, err = importClusterWithRunner(br, typedJob, statuses, client, config)
-		case dart.ClusterTemplate:
-			skipped, err = provisionClusterWithRunner(br, typedJob, statuses, client)
-		case tofu.CustomCluster:
-			skipped, err = registerCustomClusterWithRunner(br, typedJob, statuses, client, config)
-		default:
-			err = fmt.Errorf("unsupported job type: %T", job)
-		}
-
-		br.Results <- jobResult{skipped: skipped, err: err}
-
-		// Continue draining Jobs after failures so Run receives one result per job.
-	}
+	return errors.Join(errors.Join(jobErrors...), groupErr, ctx.Err())
 }

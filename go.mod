@@ -69,12 +69,15 @@ require (
 	github.com/qase-tms/qase-go/pkg/qase-go v1.2.0
 	github.com/qase-tms/qase-go/qase-api-client v1.2.10
 	github.com/qase-tms/qase-go/qase-api-v2-client v1.1.7
+	github.com/rancher/norman v0.8.1
 	github.com/rancher/rancher/pkg/apis v0.0.0
 	github.com/rancher/shepherd v0.0.0-20251203195144-c9f6483abe67
 	github.com/rancher/tests/actions v0.0.0-20251111162746-32a475483166
 	github.com/rancher/tests/interoperability v0.0.0-00010101000000-000000000000
 	github.com/sirupsen/logrus v1.9.4
 	github.com/urfave/cli/v2 v2.27.7
+	golang.org/x/crypto v0.47.0
+	golang.org/x/sync v0.19.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.34.3
@@ -193,7 +196,6 @@ require (
 	github.com/rancher/fleet/pkg/apis v0.15.0-alpha.4 // indirect
 	github.com/rancher/gke-operator v1.13.0-rc.3 // indirect
 	github.com/rancher/lasso v0.2.5 // indirect
-	github.com/rancher/norman v0.8.1 // indirect
 	github.com/rancher/rancher v0.0.0-20251203234820-b95b2fb0d738 // indirect
 	github.com/rancher/rke v1.8.5 // indirect
 	github.com/rancher/system-upgrade-controller/pkg/apis v0.0.0-20250930163923-f2c9e60b1078 // indirect
@@ -221,11 +223,9 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.47.0 // indirect
 	golang.org/x/mod v0.32.0 // indirect
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/oauth2 v0.32.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/text v0.33.0 // indirect

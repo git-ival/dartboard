@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rancher/dartboard/internal/tofu"
 	yaml "gopkg.in/yaml.v3"
@@ -24,6 +25,8 @@ type Dart struct {
 	TestVariables          TestVariables     `yaml:"test_variables"`
 	TofuParallelism        int               `yaml:"tofu_parallelism"`
 	ClusterBatchSize       int               `yaml:"cluster_batch_size"`
+	ClusterStartInterval   time.Duration     `yaml:"cluster_start_interval"`
+	ClusterStartJitter     float64           `yaml:"cluster_start_jitter"`
 }
 
 type ClusterTemplate struct {
@@ -70,8 +73,10 @@ type TestVariables struct {
 
 func defaultDart() Dart {
 	return Dart{
-		TofuParallelism: 10,
-		TofuVariables:   map[string]any{},
+		TofuParallelism:      10,
+		TofuVariables:        map[string]any{},
+		ClusterStartInterval: 5 * time.Second,
+		ClusterStartJitter:   0.2,
 		ChartVariables: ChartVariables{
 			EnableIPv6:                  false,
 			RancherReplicas:             1,

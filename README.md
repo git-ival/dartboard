@@ -22,6 +22,50 @@ To recreate environments:
  - `dartboard reapply` runs `destroy` and then `apply`, tearing down and recreating test configuration infrastructure without any software (Rancher, load generation, moniroting...)
  - `dartboard redeploy` runs `destroy` and then `deploy`, tearing down and recreating the full environment, infrastructure and software (use this if unsure)
 
+### Downstream Registration And Resume
+
+`cluster_batch_size` limits the number of concurrent cluster operations. Jobs use
+available slots continuously, while a shared pacing gate staggers cluster creation
+and registration starts within each workflow. By default starts are spaced 5-6
+seconds apart (a 5-second minimum plus up to 20% positive jitter). Already-ready
+clusters bypass this gate. A newly created cluster consumes one slot for creation
+and another when its import or SSH registration begins. For example:
+
+```yaml
+cluster_batch_size: 10
+cluster_start_interval: 15s
+cluster_start_jitter: 0.2
+```
+
+This example spaces starts 15-18 seconds apart while allowing up to 10 cluster
+operations in flight. Tune these limits for the Rancher deployment; they are not a
+guarantee of capacity. Set `cluster_start_interval: 0s` to disable pacing, or
+`cluster_start_jitter: 0` for fixed spacing. Pacing waits are cancellable and do not
+introduce a trailing batch sleep. SSH handshake retries retain their per-node
+exponential backoff with jitter; whole workflows are not blindly retried.
+
+Imports, custom registrations, and provisioning attempt every valid cluster even when
+individual clusters fail, then return the collected errors. Cancellation or an
+unusable checkpoint store stops admission of new jobs. Registration and readiness
+use a 30-minute per-cluster context; dependency-level verification calls also have
+their own timeouts.
+
+Re-run `dartboard deploy` with the same workspace and cluster identities to resume
+an interrupted deployment. Rancher resources are looked up before creation, and
+ready clusters are not registered again. Completion is checkpointed atomically in
+`clusters_state.yaml` after validation. Node registration retries are local to the
+failed node; successful registrations are marked on each node for that Rancher
+cluster UID. Keep cluster names and node assignments stable when resuming.
+
+Provisioned clusters now use `<name_prefix>-<absolute_index>` names, independent of
+the concurrency limit. Legacy provisioning checkpoints used batch-position keys
+without recording the randomly generated Rancher resource name. Deploy refuses to
+guess that mapping: reconcile those existing resources and checkpoints explicitly
+before migrating. Existing import and custom-registration names are unchanged.
+
+Do not run two deploy processes against the same workspace simultaneously; the
+checkpoint lock coordinates goroutines in one deployment, not separate processes.
+
 ### "Bring Your Own" AWS VPC
 There is some manual configuration required in order to use an existing AWS VPC instead of having the tofu modules create a full set of networking resources.
 

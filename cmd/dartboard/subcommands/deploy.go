@@ -17,15 +17,19 @@ limitations under the License.
 package subcommands
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/rancher/dartboard/internal/dart"
 	"github.com/rancher/dartboard/internal/helm"
@@ -34,6 +38,7 @@ import (
 	"github.com/rancher/shepherd/clients/rancher"
 	"github.com/rancher/shepherd/pkg/session"
 	cli "github.com/urfave/cli/v2"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/sirupsen/logrus"
 
@@ -70,6 +75,11 @@ const (
 )
 
 func Deploy(cli *cli.Context) error {
+	ctx, cancel := signal.NotifyContext(cli.Context, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	cli.Context = ctx
+
 	// Tofu
 	tf, r, err := prepare(cli)
 	if err != nil {
@@ -144,35 +154,51 @@ func Deploy(cli *cli.Context) error {
 		return err
 	}
 
-	if len(clusters) > 0 {
-		if err = importDownstreamClusters(r, clusters, rancherClient, &rancherConfig); err != nil {
-			return err
+	clusterErr := deployDownstreamClusters(cli, r, clusters, custom_clusters, rancherClient, &rancherConfig)
+
+	return errors.Join(clusterErr, GetAccess(cli))
+}
+
+func deployDownstreamClusters(cli *cli.Context, recipe *dart.Dart, clusters map[string]tofu.Cluster,
+	customClusters []tofu.CustomCluster, client *rancher.Client, config *rancher.Config,
+) error {
+	return runDownstreamPhases(cli.Context,
+		func() error {
+			return importDownstreamClustersWithContext(cli.Context, recipe, clusters, client, config)
+		},
+		func() error {
+			return actions.RegisterCustomClustersWithContext(cli.Context, recipe, customClusters, client, config)
+		},
+		func() error {
+			if len(recipe.ClusterTemplates) == 0 {
+				return nil
+			}
+
+			if err := setupHarvesterAndProvisionWithContext(cli.Context, recipe, client); err != nil {
+				return err
+			}
+
+			return actions.ProvisionDownstreamClustersWithContext(cli.Context, recipe, recipe.ClusterTemplates, client)
+		})
+}
+
+func runDownstreamPhases(ctx context.Context, phases ...func() error) error {
+	var phaseErrors []error
+
+	for _, phase := range phases {
+		if ctx.Err() != nil {
+			return errors.Join(errors.Join(phaseErrors...), ctx.Err())
+		}
+
+		if err := phase(); err != nil {
+			phaseErrors = append(phaseErrors, err)
+			if actions.IsFatalClusterError(err) {
+				break
+			}
 		}
 	}
 
-	logrus.Debugf("\nBEFORE CUSTOM CLUSTER LOGIC\n")
-
-	if len(custom_clusters) > 0 {
-		logrus.Debugf("\nIN CUSTOM CLUSTER LOGIC\n")
-
-		if err := actions.RegisterCustomClusters(r, custom_clusters, rancherClient, &rancherConfig); err != nil {
-			return err
-		}
-	}
-
-	if len(r.ClusterTemplates) > 0 {
-		if err = setupHarvesterAndProvision(r, rancherClient); err != nil {
-			return err
-		}
-
-		logrus.Info("Provisioning Downstream Clusters")
-
-		if err = actions.ProvisionDownstreamClusters(r, r.ClusterTemplates, rancherClient); err != nil {
-			return err
-		}
-	}
-
-	return GetAccess(cli)
+	return errors.Join(errors.Join(phaseErrors...), ctx.Err())
 }
 
 // applyTofuChanges applies or outputs Terraform/Tofu changes
@@ -243,6 +269,10 @@ func installUpstreamCharts(r *dart.Dart, rancherImageTag string, upstream *tofu.
 
 // importDownstreamClusters imports all downstream clusters into Rancher
 func importDownstreamClusters(r *dart.Dart, clusters map[string]tofu.Cluster, rancherClient *rancher.Client, rancherConfig *rancher.Config) error {
+	return importDownstreamClustersWithContext(context.Background(), r, clusters, rancherClient, rancherConfig)
+}
+
+func importDownstreamClustersWithContext(ctx context.Context, r *dart.Dart, clusters map[string]tofu.Cluster, rancherClient *rancher.Client, rancherConfig *rancher.Config) error {
 	downstreamClusters := []tofu.Cluster{}
 
 	for k, v := range clusters {
@@ -263,33 +293,33 @@ func importDownstreamClusters(r *dart.Dart, clusters map[string]tofu.Cluster, ra
 
 	logrus.Info("Importing Downstream Clusters")
 
-	return actions.ImportDownstreamClusters(r, downstreamClusters, rancherClient, rancherConfig)
+	return actions.ImportDownstreamClustersWithContext(ctx, r, downstreamClusters, rancherClient, rancherConfig)
 }
 
 // setupHarvesterAndProvision sets up Harvester client if needed
 func setupHarvesterAndProvision(r *dart.Dart, rancherClient *rancher.Client) error {
+	return setupHarvesterAndProvisionWithContext(context.Background(), r, rancherClient)
+}
+
+func setupHarvesterAndProvisionWithContext(ctx context.Context, r *dart.Dart, rancherClient *rancher.Client) error {
 	if !strings.Contains(r.TofuMainDirectory, "harvester") {
 		return nil
 	}
 
 	logrus.Info("Parsing Harvester's Kubeconfig")
 
-	var (
-		kubeconfig *actions.Kubeconfig
-		err        error
-	)
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	loadingRules.ExplicitPath, _ = r.TofuVariables["kubeconfig"].(string)
 
-	if len(r.TofuVariables["kubeconfig"].(string)) > 0 {
-		kubeconfig, err = actions.ParseKubeconfig(r.TofuVariables["kubeconfig"].(string))
-		if err != nil {
-			return fmt.Errorf("error while parsing kubeconfig at %v: %w", r.TofuVariables["kubeconfig"].(string), err)
-		}
+	kubeconfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{}).ClientConfig()
+	if err != nil {
+		return fmt.Errorf("loading Harvester kubeconfig: %w", err)
 	}
 
 	logrus.Info("Setting up Harvester Client's Config")
 
-	harvesterHost := strings.Split(kubeconfig.Clusters[0].Cluster.Server, "://")[1]
-	harvesterConfig := actions.NewHarvesterConfig(harvesterHost, kubeconfig.Users[0].User.Token, "", true)
+	harvesterHost := strings.TrimPrefix(strings.TrimPrefix(kubeconfig.Host, "https://"), "http://")
+	harvesterConfig := actions.NewHarvesterConfig(harvesterHost, kubeconfig.BearerToken, "", true)
 
 	logrus.Info("Setting up Harvester Client")
 
@@ -300,7 +330,7 @@ func setupHarvesterAndProvision(r *dart.Dart, rancherClient *rancher.Client) err
 
 	logrus.Info("Importing Harvester Cluster into Rancher for provisioning")
 
-	return harvesterClient.ImportCluster()
+	return harvesterClient.ImportClusterWithContext(ctx)
 }
 
 func chartInstall(kubeConf string, chart chart, vals map[string]any, extraArgs ...string) error {

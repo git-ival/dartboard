@@ -6,12 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"al.essio.dev/pkg/shellescape"
 	"github.com/rancher/dartboard/internal/dart"
 	"github.com/rancher/dartboard/internal/tofu"
 	apisV1 "github.com/rancher/rancher/pkg/apis/provisioning.cattle.io/v1"
 	"github.com/rancher/tests/actions/clusters"
 	rancherclusters "github.com/rancher/tests/actions/clusters"
 	"github.com/rancher/tests/actions/machinepools"
+	"github.com/rancher/tests/actions/provisioninginput"
 	"github.com/rancher/tests/actions/registries"
 	"github.com/rancher/tests/actions/reports"
 	"github.com/sirupsen/logrus"
@@ -23,10 +25,8 @@ import (
 	"github.com/rancher/shepherd/extensions/defaults"
 	shepherddefaults "github.com/rancher/shepherd/extensions/defaults"
 	stevetypes "github.com/rancher/shepherd/extensions/defaults/stevetypes"
-	"github.com/rancher/shepherd/extensions/etcdsnapshot"
 	"github.com/rancher/shepherd/extensions/kubeconfig"
 	nodestat "github.com/rancher/shepherd/extensions/nodes"
-	"github.com/rancher/shepherd/extensions/tokenregistration"
 	"github.com/rancher/shepherd/extensions/workloads/pods"
 	shepherdnodes "github.com/rancher/shepherd/pkg/nodes"
 	"github.com/rancher/shepherd/pkg/wait"
@@ -52,6 +52,8 @@ const (
 // ConvertConfigToClusterConfig converts the ClusterConfig from (user) input to a rancher/tests ClusterConfig
 func ConvertConfigToClusterConfig(config *dart.ClusterConfig) *rancherclusters.ClusterConfig {
 	var newConfig rancherclusters.ClusterConfig
+
+	newConfig.MachinePools = make([]provisioninginput.MachinePools, len(config.MachinePools))
 	for i := range config.MachinePools {
 		newConfig.MachinePools[i].Pools = config.MachinePools[i].Pools
 		newConfig.MachinePools[i].MachinePoolConfig = machinepools.MachinePoolConfig{
@@ -261,6 +263,10 @@ func buildCustomClusterPoolPlan(cluster *apisV1.Cluster) ([]int32, []string, int
 			return nil, nil, 0, fmt.Errorf("cluster %s has a machine pool with nil quantity", cluster.Name)
 		}
 
+		if *pool.Quantity <= 0 || (!pool.ControlPlaneRole && !pool.EtcdRole && !pool.WorkerRole) {
+			return nil, nil, 0, fmt.Errorf("cluster %s machine pools need a positive quantity and at least one role", cluster.Name)
+		}
+
 		var finalRoleCommand string
 		if pool.ControlPlaneRole {
 			finalRoleCommand += " --controlplane"
@@ -294,49 +300,15 @@ func validateCustomClusterNodeCount(nodes []tofu.Node, totalNodesNeeded int) err
 	return nil
 }
 
-func customClusterRegistrationWatch(client *rancher.Client, steveObject *v1.SteveAPIObject, cluster *apisV1.Cluster) (watch.Interface, string, error) {
-	customCluster, err := client.Steve.SteveType(etcdsnapshot.ProvisioningSteveResouceType).ByID(steveObject.ID)
-	if err != nil {
-		return nil, "", err
-	}
-
-	clusterStatus := &apisV1.ClusterStatus{}
-
-	err = v1.ConvertToK8sType(customCluster.Status, clusterStatus)
-	if err != nil {
-		return nil, "", err
-	}
-
-	token, err := tokenregistration.GetRegistrationToken(client, clusterStatus.ClusterName)
-	if err != nil {
-		return nil, "", err
-	}
-
-	if strings.TrimSpace(token.InsecureNodeCommand) == "" {
-		return nil, "", fmt.Errorf("registration token command is empty for cluster %s", clusterStatus.ClusterName)
-	}
-
-	kubeProvisioningClient, err := client.GetKubeAPIProvisioningClient()
-	if err != nil {
-		return nil, "", err
-	}
-
-	result, err := kubeProvisioningClient.Clusters(cluster.Namespace).Watch(context.TODO(), metav1.ListOptions{
-		FieldSelector:  "metadata.name=" + cluster.Name,
-		TimeoutSeconds: &defaults.WatchTimeoutSeconds,
-	})
-	if err != nil {
-		return nil, "", err
-	}
-
-	return result, token.InsecureNodeCommand, nil
-}
-
-func registerCustomClusterNodes(cluster *apisV1.Cluster, nodes []tofu.Node, quantityPerPool []int32, rolesPerPool []string, nodeCommand string) error {
+func registerCustomClusterNodes(ctx context.Context, cluster *apisV1.Cluster, nodes []tofu.Node, quantityPerPool []int32, rolesPerPool []string, nodeCommand string) error {
 	totalNodesObserved := 0
 
 	for poolIndex, poolRole := range rolesPerPool {
 		for nodeIndex := range int(quantityPerPool[poolIndex]) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+
 			node := nodes[totalNodesObserved+nodeIndex]
 
 			if err := validateCustomClusterNode(node); err != nil {
@@ -349,8 +321,12 @@ func registerCustomClusterNodes(cluster *apisV1.Cluster, nodes []tofu.Node, quan
 			logrus.Infof("Linux pool detected, using bash...")
 
 			command := fmt.Sprintf("%s %s", nodeCommand, poolRole)
+
 			command = createRegistrationCommand(command, publicAddress, privateAddress, cluster.Spec.RKEConfig.MachinePools[poolIndex])
-			logrus.Infof("Node command: %s", command)
+			if cluster.UID != "" {
+				marker := shellescape.Quote(fmt.Sprintf("/var/lib/rancher/dartboard/%s-%s", cluster.Name, cluster.UID))
+				command = fmt.Sprintf("if sudo test -f %s && sudo systemctl is-active --quiet rancher-system-agent; then true; else %s && sudo mkdir -p /var/lib/rancher/dartboard && sudo touch %s; fi", marker, command, marker)
+			}
 
 			nodeSSHKey, err := tofu.ReadBytesFromPath(node.SSHKeyPath)
 			if err != nil {
@@ -369,12 +345,17 @@ func registerCustomClusterNodes(cluster *apisV1.Cluster, nodes []tofu.Node, quan
 				SSHKey:           nodeSSHKey,
 			}
 
-			output, err := shepherdNode.ExecuteCommand(command)
-			if err != nil {
-				return err
-			}
+			err = kwait.ExponentialBackoffWithContext(ctx, kwait.Backoff{Duration: time.Second, Factor: 1.1, Jitter: 0.1, Steps: 20}, func(context.Context) (bool, error) {
+				commandErr := executeRegistrationCommand(ctx, shepherdNode, command)
+				if commandErr != nil && strings.Contains(commandErr.Error(), "ssh: handshake failed") && !strings.Contains(commandErr.Error(), "unable to authenticate") {
+					return false, nil
+				}
 
-			logrus.Info(output)
+				return commandErr == nil, commandErr
+			})
+			if err != nil {
+				return fmt.Errorf("registering node %s: %w", node.Name, err)
+			}
 		}
 
 		totalNodesObserved += int(quantityPerPool[poolIndex])
@@ -384,7 +365,14 @@ func registerCustomClusterNodes(cluster *apisV1.Cluster, nodes []tofu.Node, quan
 }
 
 // RegisterCustomCluster registers a non-rke1 cluster using a 3rd party client for its nodes
-func RegisterCustomCluster(client *rancher.Client, steveObject *v1.SteveAPIObject, cluster *apisV1.Cluster, nodes []tofu.Node) (*v1.SteveAPIObject, error) {
+func RegisterCustomCluster(client *rancher.Client, _ *v1.SteveAPIObject, cluster *apisV1.Cluster, nodes []tofu.Node) (*v1.SteveAPIObject, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	return registerCustomClusterWithContext(ctx, client, cluster, nodes)
+}
+
+func registerCustomClusterWithContext(ctx context.Context, client *rancher.Client, cluster *apisV1.Cluster, nodes []tofu.Node) (*v1.SteveAPIObject, error) {
 	quantityPerPool, rolesPerPool, totalNodesNeeded, err := buildCustomClusterPoolPlan(cluster)
 	if err != nil {
 		return nil, err
@@ -395,17 +383,32 @@ func RegisterCustomCluster(client *rancher.Client, steveObject *v1.SteveAPIObjec
 		return nil, err
 	}
 
-	result, nodeCommand, err := customClusterRegistrationWatch(client, steveObject, cluster)
+	current, err := waitForCluster(ctx, client, cluster.Name, func(cluster *apisV1.Cluster) bool { return cluster.Status.ClusterName != "" })
 	if err != nil {
 		return nil, err
 	}
 
-	err = registerCustomClusterNodes(cluster, nodes, quantityPerPool, rolesPerPool, nodeCommand)
+	if current.Status.Ready {
+		return client.Steve.SteveType(stevetypes.Provisioning).ByID(cluster.Namespace + "/" + cluster.Name)
+	}
+
+	cluster.UID = current.UID
+
+	token, err := registrationToken(ctx, client, current.Status.ClusterName)
 	if err != nil {
 		return nil, err
 	}
 
-	err = wait.WatchWait(result, shepherdclusters.IsProvisioningClusterReady)
+	if strings.TrimSpace(token.InsecureNodeCommand) == "" {
+		return nil, fmt.Errorf("registration token command is empty for cluster %s", current.Status.ClusterName)
+	}
+
+	err = registerCustomClusterNodes(ctx, cluster, nodes, quantityPerPool, rolesPerPool, token.InsecureNodeCommand)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = waitForCluster(ctx, client, cluster.Name, func(cluster *apisV1.Cluster) bool { return cluster.Status.Ready })
 	if err != nil {
 		return nil, err
 	}

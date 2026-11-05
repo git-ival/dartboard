@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 	yaml "gopkg.in/yaml.v2"
@@ -11,6 +12,7 @@ import (
 
 // ClusterStatus holds the state of each cluster.
 type ClusterStatus struct {
+	ResourceUID string `yaml:"resource_uid,omitempty"`
 	Name        string `yaml:"name"`
 	New         bool   `yaml:"new"`
 	Infra       bool   `yaml:"infra"`
@@ -68,8 +70,37 @@ func SaveClusterState(filePath string, statuses map[string]*ClusterStatus) error
 		return fmt.Errorf("failed to create Cluster state directory: %w", err)
 	}
 
-	if err := os.WriteFile(filePath, data, 0o644); err != nil {
+	file, err := os.CreateTemp(filepath.Dir(filePath), ".clusters-state-*")
+	if err != nil {
+		return fmt.Errorf("failed to create Cluster state file: %w", err)
+	}
+	defer os.Remove(file.Name())
+	defer file.Close()
+
+	if _, err := file.Write(data); err != nil {
 		return fmt.Errorf("failed to write Cluster state file: %w", err)
+	}
+
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync Cluster state file: %w", err)
+	}
+
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("failed to close Cluster state file: %w", err)
+	}
+
+	if err := os.Rename(file.Name(), filePath); err != nil {
+		return fmt.Errorf("failed to replace Cluster state file: %w", err)
+	}
+
+	directory, err := os.Open(filepath.Dir(filePath))
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+
+	if err := directory.Sync(); err != nil {
+		return fmt.Errorf("failed to sync Cluster state directory: %w", err)
 	}
 
 	return nil
@@ -100,7 +131,97 @@ func LoadClusterState(filePath string) (map[string]*ClusterStatus, error) {
 		return nil, fmt.Errorf("failed to unmarshal state: %w", err)
 	}
 
+	if statuses == nil {
+		statuses = map[string]*ClusterStatus{}
+	}
+
 	return statuses, nil
+}
+
+type clusterStateStore struct {
+	statuses map[string]*ClusterStatus
+	path     string
+	mu       sync.Mutex
+}
+
+func openClusterStateStore(path string) (*clusterStateStore, error) {
+	statuses, err := LoadClusterState(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return &clusterStateStore{path: path, statuses: statuses}, nil
+}
+
+func (store *clusterStateStore) snapshot(name string) ClusterStatus {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	if status := store.statuses[name]; status != nil {
+		return *status
+	}
+
+	return ClusterStatus{Name: name}
+}
+
+func (store *clusterStateStore) advance(name string, stage Stage) error {
+	return store.checkpoint(name, stage, "")
+}
+
+func (store *clusterStateStore) checkpoint(name string, stage Stage, resourceUID string) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	status := ClusterStatus{Name: name}
+
+	previous := store.statuses[name]
+	if previous != nil {
+		status = *previous
+	}
+
+	if resourceUID != "" {
+		if status.ResourceUID != "" && status.ResourceUID != resourceUID {
+			status = ClusterStatus{Name: name}
+		}
+
+		status.ResourceUID = resourceUID
+	}
+
+	if stage > status.Stage {
+		status.Stage = stage
+	}
+
+	switch stage {
+	case StageNew:
+		status.New = true
+	case StageInfra:
+		status.Infra = true
+	case StageCreated:
+		status.Created = true
+	case StageImported:
+		status.Imported = true
+	case StageProvisioned:
+		status.Provisioned = true
+	case StageRegistered:
+		status.Registered = true
+	}
+
+	if previous != nil && *previous == status {
+		return nil
+	}
+
+	store.statuses[name] = &status
+	if err := SaveClusterState(store.path, store.statuses); err != nil {
+		if previous == nil {
+			delete(store.statuses, name)
+		} else {
+			store.statuses[name] = previous
+		}
+
+		return fmt.Errorf("%w: %s at %s: %w", errCheckpointFailed, name, stage, err)
+	}
+
+	return nil
 }
 
 func DestroyClusterState(filePath string) error {

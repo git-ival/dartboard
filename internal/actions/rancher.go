@@ -1,33 +1,29 @@
 package actions
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/rancher/dartboard/internal/dart"
 	"github.com/rancher/dartboard/internal/tofu"
-	yaml "gopkg.in/yaml.v2"
-
+	provv1 "github.com/rancher/rancher/pkg/apis/provisioning.cattle.io/v1"
 	"github.com/rancher/shepherd/clients/rancher"
 	management "github.com/rancher/shepherd/clients/rancher/generated/management/v3"
-	v1 "github.com/rancher/shepherd/clients/rancher/v1"
-	"github.com/rancher/shepherd/extensions/cloudcredentials"
 	shepherdclusters "github.com/rancher/shepherd/extensions/clusters"
 	shepherddefaults "github.com/rancher/shepherd/extensions/defaults"
 	shepherdtokens "github.com/rancher/shepherd/extensions/token"
 	"github.com/rancher/shepherd/pkg/session"
-	shepherdwait "github.com/rancher/shepherd/pkg/wait"
-
-	"github.com/rancher/tests/actions/machinepools"
 	"github.com/rancher/tests/actions/pipeline"
-	"github.com/rancher/tests/actions/provisioning"
-	"github.com/rancher/tests/actions/reports"
-
 	"github.com/sirupsen/logrus"
-
-	provv1 "github.com/rancher/rancher/pkg/apis/provisioning.cattle.io/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
+	kwait "k8s.io/apimachinery/pkg/util/wait"
 )
 
 const fleetNamespace = "fleet-default"
@@ -44,509 +40,273 @@ func NewRancherConfig(host, adminToken, adminPassword string, insecure bool) ran
 	}
 }
 
-func SetupRancherClient(rancherConfig *rancher.Config, bootstrapPassword string, session *session.Session) (*rancher.Client, error) {
-	adminUser := &management.User{
-		Username: "admin",
-		Password: bootstrapPassword,
-	}
-
-	logrus.Debugf("Rancher Config: Host: %s AdminToken: %s Insecure: %t", rancherConfig.Host, rancherConfig.AdminToken, *rancherConfig.Insecure)
+func SetupRancherClient(rancherConfig *rancher.Config, bootstrapPassword string, rancherSession *session.Session) (*rancher.Client, error) {
+	adminUser := &management.User{Username: "admin", Password: bootstrapPassword}
 
 	adminToken, err := shepherdtokens.GenerateUserToken(adminUser, rancherConfig.Host)
 	if err != nil {
-		return nil, fmt.Errorf("error while creating Admin Token with config %v:\n%v", &rancherConfig, err)
+		return nil, fmt.Errorf("creating admin token: %w", err)
 	}
 
 	rancherConfig.AdminToken = adminToken.Token
 
-	client, err := rancher.NewClientForConfig(rancherConfig.AdminToken, rancherConfig, session)
+	client, err := rancher.NewClientForConfig(rancherConfig.AdminToken, rancherConfig, rancherSession)
 	if err != nil {
-		return nil, fmt.Errorf("error while setting up Rancher client with config %v:\n%v", rancherConfig, err)
+		return nil, fmt.Errorf("setting up Rancher client: %w", err)
 	}
 
-	err = pipeline.PostRancherInstall(client, rancherConfig.AdminPassword)
-	if err != nil {
-		return nil, fmt.Errorf("error during post- rancher install: %v", err)
+	if err := pipeline.PostRancherInstall(client, rancherConfig.AdminPassword); err != nil {
+		return nil, fmt.Errorf("post-Rancher install: %w", err)
 	}
 
-	client, err = rancher.NewClientForConfig(rancherConfig.AdminToken, rancherConfig, session)
-	if err != nil {
-		return nil, fmt.Errorf("error during post- rancher install on re-login: %v", err)
-	}
-
-	return client, err
+	return rancher.NewClientForConfig(rancherConfig.AdminToken, rancherConfig, rancherSession)
 }
 
-func ProvisionDownstreamClusters(r *dart.Dart, templates []dart.ClusterTemplate, rancherClient *rancher.Client) error {
-	if r.ClusterBatchSize <= 0 {
-		panic("ClusterBatchSize must be > 0")
-	}
-
-	for _, template := range r.ClusterTemplates {
-		err := ProvisionClustersInBatches(r, template, rancherClient)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+func IsFatalClusterError(err error) bool {
+	return errors.Is(err, errCheckpointFailed)
 }
 
-// Provisions clusters in "batches" where r.ClusterBatchSize is the maximum # of clusters to provision before sleeping for a short period and continuing
-// This will continue to provision clusters until template.ClusterCount # of Clusters have been provisioned
-func ProvisionClustersInBatches(r *dart.Dart, template dart.ClusterTemplate, rancherClient *rancher.Client) error {
-	clusterStatePath := fmt.Sprintf("%s/%s", r.TofuWorkspaceStatePath, ClustersStateFile)
+func clusterJobClient(client *rancher.Client) (*rancher.Client, error) {
+	jobSession := session.NewSession()
+	jobSession.CleanupEnabled = false
+	config := *client.RancherConfig
+	cleanup := false
+	config.Cleanup = &cleanup
 
-	statuses, err := LoadClusterState(clusterStatePath)
-	if err != nil {
-		return err
-	}
-
-	batchNum := 0
-	// Create batches of clusters from the template
-	for i := 0; i < template.ClusterCount; i += r.ClusterBatchSize {
-		// Create a batch of templates with unique names
-		batchTemplates := make([]dart.ClusterTemplate, 0, r.ClusterBatchSize)
-		j := min(i+r.ClusterBatchSize, template.ClusterCount)
-
-		// Generate the name for each instance of the template and add the template instances to the batchTemplates slice
-		for k := i; k < j; k++ {
-			templateCopy := template
-			templateCopy.SetGeneratedName(fmt.Sprintf("%d-%d", batchNum, k-i))
-			batchTemplates = append(batchTemplates, templateCopy)
-		}
-
-		// Create and run a batch runner for this batch of templates
-		batchRunner := NewSequencedBatchRunner[dart.ClusterTemplate](len(batchTemplates))
-
-		err := batchRunner.Run(batchTemplates, statuses, clusterStatePath, rancherClient, nil)
-		if err != nil {
-			return err
-		}
-
-		batchNum++
-	}
-
-	return nil
+	return rancher.NewClientForConfig(config.AdminToken, &config, jobSession)
 }
 
-func provisionClusterWithRunner[J JobDataTypes](br *SequencedBatchRunner[J], template dart.ClusterTemplate,
-	statuses map[string]*ClusterStatus, rancherClient *rancher.Client,
-) (skipped bool, err error) {
-	clusterName := template.GeneratedName()
-
-	stateMutex.Lock()
-
-	cs := FindOrCreateStatusByName(statuses, clusterName)
-	// cs.ClusterTemplate = template
-	stateMutex.Unlock()
-
-	<-br.seqCh
-
-	br.Updates <- stateUpdate{Name: clusterName, Stage: StageNew, Completed: time.Now()}
-
-	br.seqCh <- struct{}{}
-
-	if cs.Provisioned {
-		logrus.Infof("Cluster %s has already been provisioned, skipping...", cs.Name)
-		return true, nil
-	}
-
-	logrus.Info("Continuing with cluster provisioning...")
-
-	nodeProvider := CreateProvider(template.ClusterConfig.Provider)
-	templateClusterConfig := ConvertConfigToClusterConfig(template.ClusterConfig)
-
-	// Create the cluster
-	clusterObject, err := provisioning.CreateProvisioningCluster(rancherClient, nodeProvider, cloudcredentials.CloudCredential{}, templateClusterConfig, machinepools.MachineConfigs{}, nil)
-	reports.TimeoutClusterReport(clusterObject, err)
-
-	if err != nil {
-		return false, fmt.Errorf("error while provisioning cluster with ClusterConfig %v:\n%v", templateClusterConfig, err)
-	}
-
-	<-br.seqCh
-
-	br.Updates <- stateUpdate{Name: clusterName, Stage: StageCreated, Completed: time.Now()}
-
-	br.seqCh <- struct{}{}
-
-	logrus.Infof("Cluster named %s was created.", clusterName)
-
-	// Wait for the cluster to be ready
-	fiveMinuteTimeout := int64(shepherddefaults.FiveMinuteTimeout)
-	listOpts := metav1.ListOptions{
-		FieldSelector:  "metadata.name=" + clusterObject.ID,
-		TimeoutSeconds: &fiveMinuteTimeout,
-	}
-
-	watchInterface, err := rancherClient.GetManagementWatchInterface(management.ClusterType, listOpts)
-	if err != nil {
-		return false, fmt.Errorf("error while getting Management Watch Interface with Cluster %v and ListOptions %v:\n%v", clusterObject.ID, listOpts, err)
-	}
-
-	checkFunc := shepherdclusters.IsProvisioningClusterReady
-	err = shepherdwait.WatchWait(watchInterface, checkFunc)
-	reports.TimeoutClusterReport(clusterObject, err)
-
-	if err != nil {
-		return false, fmt.Errorf("error while waiting for Provisioned Cluster to be Ready %v:\n%v", clusterObject.ID, err)
-	}
-
-	cs.Provisioned = true
-
-	<-br.seqCh
-
-	br.Updates <- stateUpdate{Name: clusterName, Stage: StageProvisioned, Completed: time.Now()}
-
-	br.seqCh <- struct{}{}
-
-	logrus.Infof("Cluster named %s was provisioned.", clusterName)
-
-	return false, nil
-}
-
-func ImportDownstreamClusters(r *dart.Dart, clusters []tofu.Cluster, rancherClient *rancher.Client, rancherConfig *rancher.Config) error {
-	if r.ClusterBatchSize <= 0 {
-		panic("ClusterBatchSize must be > 0")
-	}
-
-	if len(clusters) == 0 {
-		logrus.Info("No importable Clusters were provided.")
+func runWithClusterState[Job any](ctx context.Context, recipe *dart.Dart, jobs []Job,
+	client *rancher.Client, name func(Job) string,
+	run func(context.Context, Job, *clusterStateStore, *rancher.Client, *clusterPacer) error,
+) error {
+	if len(jobs) == 0 {
 		return nil
 	}
 
-	err := ImportClustersInBatches(r, clusters, rancherClient, rancherConfig)
+	pacer, err := newClusterPacer(recipe.ClusterStartInterval, recipe.ClusterStartJitter)
 	if err != nil {
 		return err
 	}
 
-	return nil
-}
-
-func ImportClustersInBatches(r *dart.Dart, clusters []tofu.Cluster, rancherClient *rancher.Client, rancherConfig *rancher.Config) error {
-	clusterStatePath := fmt.Sprintf("%s/%s", r.TofuWorkspaceStatePath, ClustersStateFile)
-
-	statuses, err := LoadClusterState(clusterStatePath)
+	store, err := openClusterStateStore(filepath.Join(recipe.TofuWorkspaceStatePath, ClustersStateFile))
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", errCheckpointFailed, err)
 	}
 
-	// Enqueue clusters in batches and collect results
-	for i := 0; i < len(clusters); i += r.ClusterBatchSize {
-		j := min(i+r.ClusterBatchSize, len(clusters))
-		batch := clusters[i:j]
-
-		batchRunner := NewSequencedBatchRunner[tofu.Cluster](len(batch))
-
-		err := batchRunner.Run(batch, statuses, clusterStatePath, rancherClient, rancherConfig)
+	return runClusterJobs(ctx, jobs, recipe.ClusterBatchSize, name, func(ctx context.Context, job Job) error {
+		jobClient, err := clusterJobClient(client)
 		if err != nil {
 			return err
 		}
-	}
 
-	return nil
-}
+		jobCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+		defer cancel()
 
-// createAndWaitForCluster creates a cluster and waits for it to be ready
-func createAndWaitForCluster(rancherClient *rancher.Client, rancherConfig *rancher.Config, importCluster *provv1.Cluster) (*provv1.Cluster, error) {
-	if _, err := CreateK3SRKE2Cluster(rancherClient, rancherConfig, importCluster); err != nil {
-		return nil, fmt.Errorf("error while creating Steve Cluster with Name %s:\n%w", importCluster.Name, err)
-	}
-
-	err := BackoffWait(30, func() (finished bool, err error) {
-		updatedCluster, _, err := shepherdclusters.GetProvisioningClusterByName(rancherClient, importCluster.Name, importCluster.Namespace)
-		if err != nil {
-			return false, fmt.Errorf("error while getting Cluster by Name %s in Namespace %s:\n%w", importCluster.Name, importCluster.Namespace, err)
-		}
-
-		if updatedCluster.Status.ClusterName != "" {
-			return true, nil
-		}
-
-		return false, nil
+		return run(jobCtx, job, store, jobClient, pacer)
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	updatedCluster, _, err := shepherdclusters.GetProvisioningClusterByName(rancherClient, importCluster.Name, importCluster.Namespace)
-	if err != nil {
-		return nil, fmt.Errorf("error while getting Cluster by Name %s in Namespace %s:\n%w", importCluster.Name, importCluster.Namespace, err)
-	}
-
-	return updatedCluster, nil
 }
 
-// performClusterImport imports an external cluster into Rancher
-func performClusterImport(rancherClient *rancher.Client, cluster tofu.Cluster, importCluster *provv1.Cluster) (*provv1.Cluster, error) {
-	restConfig, err := GetRESTConfigFromPath(cluster.Kubeconfig)
-	if err != nil {
-		return nil, err
-	}
-	// Apply client-side rate limiting
-	restConfig.QPS = 50
-	restConfig.Burst = 100
-
-	updatedCluster, _, err := shepherdclusters.GetProvisioningClusterByName(rancherClient, importCluster.Name, importCluster.Namespace)
-	if err != nil {
-		return nil, fmt.Errorf("error while getting Cluster by Name %s in Namespace %s:\n%w", importCluster.Name, importCluster.Namespace, err)
-	}
-
-	logrus.Infof("Importing Cluster, ID:%s Name:%s", updatedCluster.Status.ClusterName, updatedCluster.Name)
-
-	err = shepherdclusters.ImportCluster(rancherClient, updatedCluster, restConfig)
-	if err != nil {
-		return nil, fmt.Errorf("error while creating Job for importing Cluster %s:\n%w", updatedCluster.Name, err)
-	}
-
-	err = BackoffWait(100, func() (finished bool, err error) {
-		updatedCluster, _, err = shepherdclusters.GetProvisioningClusterByName(rancherClient, importCluster.Name, importCluster.Namespace)
-		if err != nil {
-			return false, fmt.Errorf("error while getting Cluster by Name %s in Namespace %s:\n%w", importCluster.Name, importCluster.Namespace, err)
-		}
-
-		return updatedCluster.Status.Ready, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return updatedCluster, nil
+func ProvisionDownstreamClusters(recipe *dart.Dart, templates []dart.ClusterTemplate, client *rancher.Client) error {
+	return ProvisionDownstreamClustersWithContext(context.Background(), recipe, templates, client)
 }
 
-func importClusterWithRunner[J JobDataTypes](br *SequencedBatchRunner[J], cluster tofu.Cluster,
-	statuses map[string]*ClusterStatus, rancherClient *rancher.Client, rancherConfig *rancher.Config,
-) (skipped bool, err error) {
-	stateMutex.Lock()
-
-	cs := FindOrCreateStatusByName(statuses, cluster.Name)
-
-	stateMutex.Unlock()
-	<-br.seqCh
-
-	br.Updates <- stateUpdate{Name: cluster.Name, Stage: StageNew, Completed: time.Now()}
-
-	br.seqCh <- struct{}{}
-
-	logrus.Infof("Found existing ClusterStatus object for Cluster with name %s.", cluster.Name)
-
-	if cs.Imported {
-		logrus.Infof("Cluster %s has already been imported, skipping...", cs.Name)
-		return true, nil
-	}
-
-	logrus.Info("Continuing with cluster creation...")
-
-	importCluster := provv1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cluster.Name,
-			Namespace: fleetNamespace,
-		},
-	}
-	if !cs.Created {
-		updatedCluster, err := createAndWaitForCluster(rancherClient, rancherConfig, &importCluster)
-		if err != nil {
-			return false, err
-		}
-
-		_ = updatedCluster // used for side effects in createAndWaitForCluster
-
-		// sequence the Created event
-		<-br.seqCh
-
-		br.Updates <- stateUpdate{Name: cluster.Name, Stage: StageCreated, Completed: time.Now()}
-
-		br.seqCh <- struct{}{}
-
-		logrus.Infof("Cluster named %s was created.", importCluster.Name)
-	}
-
-	updatedCluster, err := performClusterImport(rancherClient, cluster, &importCluster)
-	if err != nil {
-		return false, err
-	}
-
-	cs.Imported = true
-
-	<-br.seqCh
-
-	br.Updates <- stateUpdate{Name: cluster.Name, Stage: StageImported, Completed: time.Now()}
-
-	br.seqCh <- struct{}{}
-
-	logrus.Infof("Cluster named %s was imported.", updatedCluster.Name)
-
-	podErrors := StatusPodsWithTimeout(rancherClient, updatedCluster.Status.ClusterName, shepherddefaults.OneMinuteTimeout)
-	if len(podErrors) > 0 {
-		errorStrings := make([]string, len(podErrors))
-		for i, e := range podErrors {
-			errorStrings[i] = e.Error()
-		}
-
-		return false, fmt.Errorf("error while checking Status of Pods in Cluster %s:\n%s", updatedCluster.Status.ClusterName, strings.Join(errorStrings, "\n"))
-	}
-
-	return false, nil
-}
-
-func RegisterCustomClusters(r *dart.Dart, templates []tofu.CustomCluster,
-	rancherClient *rancher.Client, rancherConfig *rancher.Config,
-) error {
-	if r.ClusterBatchSize <= 0 {
-		panic("ClusterBatchSize must be > 0")
-	}
-
-	for _, template := range templates {
-		yamlData, err := yaml.Marshal(template)
-		if err != nil {
-			logrus.Fatalf("Error marshaling YAML: %v", err)
-		}
-
-		logrus.Debugf("tofu.CustomCluster:\n%s", string(yamlData))
-	}
-
-	for _, template := range templates {
-		err := RegisterCustomClustersInBatches(r, template, rancherClient, rancherConfig)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func RegisterCustomClustersInBatches(r *dart.Dart, template tofu.CustomCluster, rancherClient *rancher.Client, rancherConfig *rancher.Config) error {
-	clusterStatePath := fmt.Sprintf("%s/%s", r.TofuWorkspaceStatePath, ClustersStateFile)
-
-	statuses, err := LoadClusterState(clusterStatePath)
-	if err != nil {
-		return err
-	}
-
-	var custom_clusters []tofu.CustomCluster
-	// Build []tofu.CustomCluster, length = template.ClusterCount
-	startNodes := 0
-	nodeBatchSize := len(template.Nodes) / template.ClusterCount
-	endNodes := nodeBatchSize
-
-	for i := range template.ClusterCount {
-		customCluster := template
-		customCluster.Name = fmt.Sprintf("%s-%d", template.Name, i)
-		customCluster.Nodes = template.Nodes[startNodes:endNodes]
-		startNodes += nodeBatchSize
-		endNodes += nodeBatchSize
-
-		custom_clusters = append(custom_clusters, customCluster)
-	}
-
-	// endTemplate := min(r.ClusterBatchSize, len(custom_clusters))
-	for startTemplate := 0; startTemplate < len(custom_clusters); startTemplate += r.ClusterBatchSize {
-		endTemplate := min(startTemplate+r.ClusterBatchSize, len(custom_clusters))
-		batchTemplates := custom_clusters[startTemplate:endTemplate]
-
-		batchRunner := NewSequencedBatchRunner[tofu.CustomCluster](len(batchTemplates))
-
-		err := batchRunner.Run(batchTemplates, statuses, clusterStatePath, rancherClient, rancherConfig)
-		if err != nil {
-			return err
-		}
-		// endTemplate += min(r.ClusterBatchSize, len(custom_clusters)-endTemplate)
-	}
-
-	return nil
-}
-
-// createMachinePools creates machine pools from template configuration
-func createMachinePools(template tofu.CustomCluster) []provv1.RKEMachinePool {
-	var machinePools []provv1.RKEMachinePool
-
-	for _, pool := range template.MachinePools {
-		newPool := provv1.RKEMachinePool{
-			EtcdRole:         pool.Etcd,
-			ControlPlaneRole: pool.ControlPlane,
-			WorkerRole:       pool.Worker,
-			Quantity:         &pool.Quantity,
-		}
-		machinePools = append(machinePools, newPool)
-	}
-
-	return machinePools
-}
-
-// createOrGetClusterObject creates a new cluster object or retrieves an existing one
-func createOrGetClusterObject[J JobDataTypes](br *SequencedBatchRunner[J], rancherClient *rancher.Client, rancherConfig *rancher.Config, provCluster *provv1.Cluster, cs *ClusterStatus, clusterName string) (*v1.SteveAPIObject, error) {
+func ProvisionDownstreamClustersWithContext(ctx context.Context, recipe *dart.Dart, templates []dart.ClusterTemplate, client *rancher.Client) error {
 	var (
-		clusterResp *v1.SteveAPIObject
-		err         error
+		jobs           []dart.ClusterTemplate
+		templateErrors []error
 	)
 
-	if !cs.Created {
-		logrus.Infof("Creating Cluster object for %s", cs.Name)
-
-		clusterResp, err = CreateK3SRKE2Cluster(rancherClient, rancherConfig, provCluster)
-		if err != nil {
-			return nil, err
+	for _, template := range templates {
+		if template.ClusterCount < 0 || template.ClusterConfig == nil {
+			templateErrors = append(templateErrors, fmt.Errorf("invalid provisioning template %q", template.NamePrefix))
+			continue
 		}
 
-		_, err = GetK3SRKE2Cluster(rancherClient, rancherConfig, provCluster)
-		if err != nil {
-			return nil, err
-		}
-
-		<-br.seqCh
-
-		br.Updates <- stateUpdate{Name: clusterName, Stage: StageCreated, Completed: time.Now()}
-
-		br.seqCh <- struct{}{}
-
-		logrus.Infof("Cluster named %s was created.", provCluster.Name)
-	} else {
-		clusterResp, err = GetK3SRKE2Cluster(rancherClient, rancherConfig, provCluster)
-		if err != nil {
-			return nil, err
+		for index := range template.ClusterCount {
+			job := template
+			job.SetGeneratedName(fmt.Sprintf("%d", index))
+			jobs = append(jobs, job)
 		}
 	}
 
-	return clusterResp, nil
+	err := runWithClusterState(ctx, recipe, jobs, client,
+		func(job dart.ClusterTemplate) string { return job.GeneratedName() },
+		func(ctx context.Context, job dart.ClusterTemplate, store *clusterStateStore, client *rancher.Client, pacer *clusterPacer) error {
+			return reconcileProvisionedCluster(ctx, recipe, job, store, client, pacer)
+		})
+
+	return errors.Join(errors.Join(templateErrors...), err)
 }
 
-func registerCustomClusterWithRunner[J JobDataTypes](br *SequencedBatchRunner[J],
-	template tofu.CustomCluster, statuses map[string]*ClusterStatus,
-	rancherClient *rancher.Client, rancherConfig *rancher.Config,
-) (skipped bool, err error) {
-	logrus.Debug("registerCustomClusterWithRunner")
+func ProvisionClustersInBatches(recipe *dart.Dart, template dart.ClusterTemplate, client *rancher.Client) error {
+	return ProvisionDownstreamClusters(recipe, []dart.ClusterTemplate{template}, client)
+}
 
-	clusterName := template.Name
-
-	stateMutex.Lock()
-
-	cs := FindOrCreateStatusByName(statuses, clusterName)
-
-	stateMutex.Unlock()
-
-	<-br.seqCh
-
-	br.Updates <- stateUpdate{Name: clusterName, Stage: StageNew, Completed: time.Now()}
-
-	br.seqCh <- struct{}{}
-
-	if cs.Registered {
-		logrus.Infof("Cluster %s has already been registered, skipping...", cs.Name)
-		return true, nil
+func reconcileProvisionedCluster(ctx context.Context, recipe *dart.Dart, template dart.ClusterTemplate, store *clusterStateStore, client *rancher.Client, pacer *clusterPacer) error {
+	name := template.GeneratedName()
+	if err := validateClusterName(name); err != nil {
+		return err
 	}
 
-	logrus.Info("Continuing with cluster registration...")
+	legacyPattern := regexp.MustCompile("^" + regexp.QuoteMeta(template.NamePrefix) + `-\d+-\d+$`)
 
-	provCluster := &provv1.Cluster{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Cluster",
-			APIVersion: "provisioning.cattle.io/v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      clusterName,
-			Namespace: fleetNamespace,
-		},
+	store.mu.Lock()
+
+	var legacyName string
+
+	for key, status := range store.statuses {
+		if legacyPattern.MatchString(key) && status != nil {
+			legacyName = key
+			break
+		}
+	}
+	store.mu.Unlock()
+
+	if legacyName != "" {
+		return fmt.Errorf("legacy checkpoint %q has no remote resource identity; reconcile its random-named Rancher cluster before migrating to %q", legacyName, name)
+	}
+
+	cluster, err := lookupCluster(ctx, client, name)
+	if err != nil {
+		return err
+	}
+
+	if cluster == nil {
+		if err := pacer.wait(ctx); err != nil {
+			return err
+		}
+
+		if err := store.advance(name, StageNew); err != nil {
+			return err
+		}
+
+		cluster, err = createNamedProvisioningCluster(ctx, recipe, client, template)
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := store.checkpoint(name, StageCreated, string(cluster.UID)); err != nil {
+		return err
+	}
+
+	if _, err := waitForCluster(ctx, client, name, func(cluster *provv1.Cluster) bool { return cluster.Status.Ready }); err != nil {
+		return err
+	}
+
+	return store.advance(name, StageProvisioned)
+}
+
+func ImportDownstreamClusters(recipe *dart.Dart, clusters []tofu.Cluster, client *rancher.Client, config *rancher.Config) error {
+	return ImportDownstreamClustersWithContext(context.Background(), recipe, clusters, client, config)
+}
+
+func ImportDownstreamClustersWithContext(ctx context.Context, recipe *dart.Dart, clusters []tofu.Cluster, client *rancher.Client, _ *rancher.Config) error {
+	return runWithClusterState(ctx, recipe, clusters, client,
+		func(cluster tofu.Cluster) string { return cluster.Name }, reconcileImportedCluster)
+}
+
+func ImportClustersInBatches(recipe *dart.Dart, clusters []tofu.Cluster, client *rancher.Client, config *rancher.Config) error {
+	return ImportDownstreamClusters(recipe, clusters, client, config)
+}
+
+func reconcileImportedCluster(ctx context.Context, target tofu.Cluster, store *clusterStateStore, client *rancher.Client, pacer *clusterPacer) error {
+	cluster, err := prepareClusterRegistration(ctx, client, &provv1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: target.Name, Namespace: fleetNamespace},
+	}, pacer)
+	if err != nil {
+		return err
+	}
+
+	if err := store.checkpoint(target.Name, StageCreated, string(cluster.UID)); err != nil {
+		return err
+	}
+
+	if !cluster.Status.Ready {
+		cluster, err = waitForCluster(ctx, client, target.Name, func(cluster *provv1.Cluster) bool { return cluster.Status.ClusterName != "" })
+		if err != nil {
+			return err
+		}
+
+		if err := pacer.wait(ctx); err != nil {
+			return err
+		}
+
+		cluster, err = waitForCluster(ctx, client, target.Name, func(cluster *provv1.Cluster) bool { return cluster.Status.ClusterName != "" })
+		if err != nil {
+			return err
+		}
+
+		if !cluster.Status.Ready {
+			if err := applyClusterImport(ctx, client, target.Kubeconfig, cluster.Status.ClusterName); err != nil {
+				return err
+			}
+		}
+
+		cluster, err = waitForCluster(ctx, client, target.Name, func(cluster *provv1.Cluster) bool { return cluster.Status.Ready })
+		if err != nil {
+			return err
+		}
+	}
+
+	if podErrors := StatusPodsWithTimeout(client, cluster.Status.ClusterName, shepherddefaults.OneMinuteTimeout); len(podErrors) != 0 {
+		return fmt.Errorf("checking pods: %w", errors.Join(podErrors...))
+	}
+
+	return store.advance(target.Name, StageImported)
+}
+
+func RegisterCustomClusters(recipe *dart.Dart, templates []tofu.CustomCluster, client *rancher.Client, config *rancher.Config) error {
+	return RegisterCustomClustersWithContext(context.Background(), recipe, templates, client, config)
+}
+
+func RegisterCustomClustersWithContext(ctx context.Context, recipe *dart.Dart, templates []tofu.CustomCluster, client *rancher.Client, _ *rancher.Config) error {
+	var (
+		jobs           []tofu.CustomCluster
+		templateErrors []error
+	)
+
+	for _, template := range templates {
+		if template.ClusterCount <= 0 || len(template.Nodes)%template.ClusterCount != 0 {
+			templateErrors = append(templateErrors, fmt.Errorf("custom template %q needs a positive cluster count and evenly partitioned nodes", template.Name))
+			continue
+		}
+
+		nodesPerCluster := len(template.Nodes) / template.ClusterCount
+		for index := range template.ClusterCount {
+			job := template
+			job.Name = fmt.Sprintf("%s-%d", template.Name, index)
+			job.Nodes = template.Nodes[index*nodesPerCluster : (index+1)*nodesPerCluster]
+			jobs = append(jobs, job)
+		}
+	}
+
+	err := runWithClusterState(ctx, recipe, jobs, client,
+		func(job tofu.CustomCluster) string { return job.Name }, reconcileCustomCluster)
+
+	return errors.Join(errors.Join(templateErrors...), err)
+}
+
+func RegisterCustomClustersInBatches(recipe *dart.Dart, template tofu.CustomCluster, client *rancher.Client, config *rancher.Config) error {
+	return RegisterCustomClusters(recipe, []tofu.CustomCluster{template}, client, config)
+}
+
+func createMachinePools(template tofu.CustomCluster) []provv1.RKEMachinePool {
+	var pools []provv1.RKEMachinePool
+	for _, pool := range template.MachinePools {
+		pools = append(pools, provv1.RKEMachinePool{
+			EtcdRole: pool.Etcd, ControlPlaneRole: pool.ControlPlane,
+			WorkerRole: pool.Worker, Quantity: &pool.Quantity,
+		})
+	}
+
+	return pools
+}
+
+func reconcileCustomCluster(ctx context.Context, template tofu.CustomCluster, store *clusterStateStore, client *rancher.Client, pacer *clusterPacer) error {
+	desired := &provv1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: template.Name, Namespace: fleetNamespace},
 		Spec: provv1.ClusterSpec{
 			KubernetesVersion: template.DistroVersion,
 			DefaultPodSecurityAdmissionConfigurationTemplateName: psactRancherPrivileged,
@@ -554,49 +314,151 @@ func registerCustomClusterWithRunner[J JobDataTypes](br *SequencedBatchRunner[J]
 		},
 	}
 
-	clusterResp, err := createOrGetClusterObject(br, rancherClient, rancherConfig, provCluster, cs, clusterName)
+	cluster, err := prepareClusterRegistration(ctx, client, desired, pacer)
 	if err != nil {
-		return false, err
+		return err
 	}
 
-	machinePools := createMachinePools(template)
-	provCluster.Spec.RKEConfig.MachinePools = machinePools
+	if err := store.checkpoint(template.Name, StageCreated, string(cluster.UID)); err != nil {
+		return err
+	}
 
-	var clusterObject *v1.SteveAPIObject
-	// Retry registration if SSH handshake fails (likely due to node not being ready or concurrency limits)
-	err = BackoffWait(20, func() (bool, error) {
-		var regErr error
-
-		clusterObject, regErr = RegisterCustomCluster(rancherClient, clusterResp, provCluster, template.Nodes)
-		if regErr != nil {
-			if strings.Contains(regErr.Error(), "ssh: handshake failed") || strings.Contains(regErr.Error(), "ssh: unable to authenticate") {
-				logrus.Warnf("SSH handshake failed for cluster %s, retrying... Error: %v", clusterName, regErr)
-				return false, nil
-			}
-
-			return false, regErr
+	if !cluster.Status.Ready {
+		if _, err := waitForCluster(ctx, client, template.Name, func(cluster *provv1.Cluster) bool { return cluster.Status.ClusterName != "" }); err != nil {
+			return err
 		}
 
-		return true, nil
+		desired.UID = cluster.UID
+		desired.Spec.RKEConfig.MachinePools = createMachinePools(template)
+
+		if err := pacer.wait(ctx); err != nil {
+			return err
+		}
+
+		if _, err := registerCustomClusterWithContext(ctx, client, desired, template.Nodes); err != nil {
+			return err
+		}
+	}
+
+	if store.snapshot(template.Name).Registered && cluster.Status.Ready {
+		logrus.Infof("Cluster %s is already registered and ready", template.Name)
+		return nil
+	}
+
+	clusterObject, err := client.Steve.SteveType(shepherdclusters.ProvisioningSteveResourceType).ByID(fleetNamespace + "/" + template.Name)
+	if err != nil {
+		return err
+	}
+
+	if err := VerifyCluster(client, client.RancherConfig, clusterObject); err != nil {
+		return err
+	}
+
+	return store.advance(template.Name, StageRegistered)
+}
+
+func validateClusterName(name string) error {
+	if problems := validation.IsDNS1123Label(name); len(problems) != 0 {
+		return fmt.Errorf("invalid cluster name %q: %s", name, strings.Join(problems, "; "))
+	}
+
+	return nil
+}
+
+func lookupCluster(ctx context.Context, client *rancher.Client, name string) (*provv1.Cluster, error) {
+	if err := validateClusterName(name); err != nil {
+		return nil, err
+	}
+
+	provisioningClient, err := client.GetKubeAPIProvisioningClient()
+	if err != nil {
+		return nil, err
+	}
+
+	cluster, err := provisioningClient.Clusters(fleetNamespace).Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+
+	return cluster, err
+}
+
+// ensureCluster ensures that the desired cluster exists in the provisioning API.
+// It validates the cluster name and either retrieves the existing cluster or creates a new one.
+func ensureCluster(ctx context.Context, client *rancher.Client, desired *provv1.Cluster) (*provv1.Cluster, error) {
+	if err := validateClusterName(desired.Name); err != nil {
+		return nil, err
+	}
+
+	provisioningClient, err := client.GetKubeAPIProvisioningClient()
+	if err != nil {
+		return nil, err
+	}
+
+	return ensureClusterResource(ctx, provisioningClient.Clusters(fleetNamespace), desired)
+}
+
+type clusterResource interface {
+	Get(context.Context, string, metav1.GetOptions) (*provv1.Cluster, error)
+	Create(context.Context, *provv1.Cluster, metav1.CreateOptions) (*provv1.Cluster, error)
+}
+
+func prepareClusterRegistration(ctx context.Context, client *rancher.Client, desired *provv1.Cluster, pacer *clusterPacer) (*provv1.Cluster, error) {
+	if err := validateClusterName(desired.Name); err != nil {
+		return nil, err
+	}
+
+	provisioningClient, err := client.GetKubeAPIProvisioningClient()
+	if err != nil {
+		return nil, err
+	}
+
+	return prepareClusterResource(ctx, provisioningClient.Clusters(fleetNamespace), desired, pacer)
+}
+
+func prepareClusterResource(ctx context.Context, resource clusterResource, desired *provv1.Cluster, pacer *clusterPacer) (*provv1.Cluster, error) {
+	cluster, err := resource.Get(ctx, desired.Name, metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return nil, err
+	}
+
+	if err == nil {
+		return cluster, nil
+	}
+
+	if err := pacer.wait(ctx); err != nil {
+		return nil, err
+	}
+
+	return ensureClusterResource(ctx, resource, desired)
+}
+
+// ensureClusterResource ensures that the desired cluster resource exists.
+// It attempts to retrieve the cluster and creates it if it does not exist.
+func ensureClusterResource(ctx context.Context, resource clusterResource, desired *provv1.Cluster) (*provv1.Cluster, error) {
+	cluster, err := resource.Get(ctx, desired.Name, metav1.GetOptions{})
+	if !apierrors.IsNotFound(err) {
+		return cluster, err
+	}
+
+	cluster, err = resource.Create(ctx, desired, metav1.CreateOptions{})
+	if apierrors.IsAlreadyExists(err) {
+		return resource.Get(ctx, desired.Name, metav1.GetOptions{})
+	}
+
+	return cluster, err
+}
+
+func waitForCluster(ctx context.Context, client *rancher.Client, name string, ready func(*provv1.Cluster) bool) (*provv1.Cluster, error) {
+	var cluster *provv1.Cluster
+
+	err := kwait.PollUntilContextCancel(ctx, 5*time.Second, true, func(ctx context.Context) (bool, error) {
+		var err error
+
+		cluster, err = lookupCluster(ctx, client, name)
+
+		return cluster != nil && ready(cluster), err
 	})
-	reports.TimeoutClusterReport(clusterObject, err)
 
-	if err != nil {
-		return false, err
-	}
-
-	err = VerifyCluster(rancherClient, rancherConfig, clusterObject)
-	if err != nil {
-		return false, err
-	}
-
-	<-br.seqCh
-
-	br.Updates <- stateUpdate{Name: clusterName, Stage: StageRegistered, Completed: time.Now()}
-
-	br.seqCh <- struct{}{}
-
-	logrus.Infof("Cluster named %s was registered.", clusterName)
-
-	return false, nil
+	return cluster, err
 }
